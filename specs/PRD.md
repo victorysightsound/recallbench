@@ -433,16 +433,35 @@ gen_model = "claude-sonnet"
 judge_model = "claude-sonnet"
 output_dir = "results"
 seed = 42
+quick_size = 50  # Default subset size for --quick mode
 
 [llm.anthropic]
 # API key via ANTHROPIC_API_KEY env var or op read
+mode = "cli"  # "cli" (default, subscription) or "api"
 rate_limit_rpm = 60
 rate_limit_tpm = 100000
 
 [llm.openai]
 # API key via OPENAI_API_KEY env var
+mode = "cli"
 rate_limit_rpm = 60
 rate_limit_tpm = 100000
+
+# OpenAI-compatible custom endpoint (DeepInfra, Together, Ollama, etc.)
+[llm.custom]
+base_url = "https://api.deepinfra.com/v1/openai"
+api_key_env = "DEEPINFRA_API_KEY"
+model = "meta-llama/Llama-3.1-70B-Instruct"
+rate_limit_rpm = 120
+rate_limit_tpm = 200000
+
+# Local inference (Ollama, LM Studio, vLLM, llama.cpp)
+[llm.local]
+base_url = "http://localhost:11434/v1"
+api_key_env = ""  # No key needed for local
+model = "llama3.1:70b"
+rate_limit_rpm = 0  # 0 = no limit
+rate_limit_tpm = 0
 
 # Generic HTTP system configuration
 [system]
@@ -453,6 +472,54 @@ version = "1.0"
 reset = { method = "POST", url = "http://localhost:8080/reset" }
 ingest = { method = "POST", url = "http://localhost:8080/ingest" }
 retrieve = { method = "POST", url = "http://localhost:8080/retrieve" }
+```
+
+### Quick Mode with Stratified Sampling
+
+The `--quick` flag (alias `--dev`) evaluates a stratified random subset instead of the full dataset. This enables rapid iteration during memory system development.
+
+- Default subset: 50 questions (configurable via `--quick-size N` or `quick_size` in config)
+- **Stratified sampling**: proportional representation from each question type (e.g., if 20% of questions are temporal reasoning, ~10 of 50 will be temporal reasoning)
+- Accepts `--seed` for reproducible subsets
+- Report output notes it was a quick run with sample size and sampling method
+- Combined with local/cheap models, enables the fastest possible iteration loop
+
+```bash
+# Quick run with defaults (50 questions, stratified)
+recallbench run --system mindcore --dataset longmemeval --quick
+
+# Custom quick size
+recallbench run --system mindcore --dataset longmemeval --quick --quick-size 100
+
+# Reproducible quick subset
+recallbench run --system mindcore --dataset longmemeval --quick --seed 42
+
+# Quick compare
+recallbench compare --systems mindcore,omega --dataset longmemeval --quick
+```
+
+### Configurable OpenAI-Compatible Endpoints
+
+Any service using the OpenAI Chat Completions API format can be used as a generation or judge model. One implementation handles all OpenAI-compatible services:
+
+- **Local inference**: Ollama, LM Studio, vLLM, llama.cpp (`http://localhost:11434/v1`)
+- **Third-party**: DeepInfra, Together, Fireworks, Groq, Replicate
+- Selectable via `--gen-model custom` or `--gen-model local` (matching TOML section names)
+- Rate limiter applies per-endpoint (set to 0 for no limit on local)
+- API key optional (local servers typically need none)
+
+```bash
+# Use local Ollama for free iteration
+recallbench run --system mindcore --dataset longmemeval --quick \
+  --gen-model local --judge-model local
+
+# Use DeepInfra for cheap cloud iteration
+recallbench run --system mindcore --dataset longmemeval \
+  --gen-model custom --judge-model custom
+
+# Mix providers: cheap generation, quality judging
+recallbench run --system mindcore --dataset longmemeval --quick \
+  --gen-model local --judge-model claude-sonnet
 ```
 
 ---
@@ -921,6 +988,9 @@ Build order enforces dependencies:
 | Longitudinal degradation | Yes | No | No | No |
 | Web UI | Yes (embedded, no deps) | Yes | No | No |
 | Deterministic seeding | Yes | No | No | No |
+| Quick mode (stratified sampling) | Yes | No | No | No |
+| OpenAI-compatible endpoints | Yes (Ollama, vLLM, DeepInfra, etc.) | No | No | No |
+| Local inference support | Yes (zero cost iteration) | No | No | No |
 | Vendor-neutral | Yes | No (Supermemory) | No (Letta) | Academic |
 | Custom datasets | Yes (JSON schema) | Yes | Yes (YAML) | No |
 | Output formats | 4 (table, markdown, JSON, CSV) | Structured reports | JSONL | Varies |
