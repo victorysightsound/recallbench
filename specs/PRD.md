@@ -671,15 +671,25 @@ Each phase produces a working, testable increment. Tasks are ordered for depende
 
 ### Phase 3: LLM Integration
 
+RecallBench supports multiple LLM providers for both generation and judging. Each provider supports **two modes**: CLI subscription (default, no API key needed) and direct HTTP API. Users choose via `recallbench.toml` or CLI flags.
+
+**Supported providers:**
+- **Claude** — `claude --print` (CLI subscription) or Anthropic Messages API
+- **ChatGPT** — `chatgpt` CLI or OpenAI Chat Completions API
+- **Gemini** — `gemini` CLI or Google Generative AI API
+- **Codex** — `codex` CLI (OpenAI)
+
 | # | Task | Description | Test |
 |---|------|-------------|------|
-| 15 | LLM client trait + registry | Implement `llm/mod.rs`: `LLMClient` trait with `generate` and `generate_with_seed`. Provider registry mapping names to clients. | Compiles with trait objects |
-| 16 | Rate limiter | Implement `llm/rate_limit.rs`: token bucket rate limiter using `governor` crate. Configurable RPM and TPM per provider. Wraps any `LLMClient` with rate-limited version. | Unit test: verify rate limiting delays requests appropriately |
-| 17 | Anthropic client | Implement `llm/anthropic.rs`: direct HTTP via reqwest to Claude Messages API. Support model selection, max_tokens, seed parameter. Parse response. API key from env var `ANTHROPIC_API_KEY`. | Integration test with real API call (behind feature flag or env check) |
-| 18 | OpenAI client | Implement `llm/openai.rs`: direct HTTP via reqwest to OpenAI Chat Completions API. Support model selection, max_tokens, seed parameter. API key from `OPENAI_API_KEY`. | Integration test with real API call (behind feature flag or env check) |
-| 19 | Claude CLI client | Implement `llm/cli.rs`: shell out to `claude --print` with stdin piping. Model selection via `--model` flag. Fallback for users without API keys. | Unit test with mock (integration test requires claude CLI installed) |
+| 15 | LLM client trait + registry | Implement `llm/mod.rs`: `LLMClient` trait with `generate` and `generate_with_seed`. Provider registry mapping names to clients. Support `cli` and `api` modes per provider. | Compiles with trait objects |
+| 16 | Rate limiter | Implement `llm/rate_limit.rs`: token bucket rate limiter using `governor` crate. Configurable RPM and TPM per provider. Wraps any `LLMClient` with rate-limited version. Only applies to API mode (CLI providers handle their own rate limiting). | Unit test: verify rate limiting delays requests appropriately |
+| 90 | Anthropic/Claude client | Implement `llm/anthropic.rs`: support BOTH Claude Code CLI subscription (`claude --print`, default, no API key needed) AND direct HTTP API to Claude Messages API. User chooses mode via config. CLI is the default. | Integration test: send prompt via CLI, verify response |
+| 91 | OpenAI/ChatGPT client | Implement `llm/openai.rs`: support BOTH ChatGPT CLI and direct HTTP API to OpenAI Chat Completions API. User chooses via config. | Integration test with CLI or API |
+| 92 | Gemini client | Implement `llm/gemini.rs`: support Gemini CLI and direct HTTP API to Google Generative AI API. User chooses via config. | Integration test with CLI or API |
+| 93 | Codex CLI client | Implement `llm/codex.rs`: shell out to `codex` CLI with appropriate flags, parse response. CLI-only provider. | Unit test with mock |
+| 94 | Generic CLI adapter | Implement `llm/cli.rs`: generic CLI adapter pattern that Claude/ChatGPT/Gemini/Codex all use internally. Detect installed providers via `which`. Provider selection via `--gen-model` and `--judge-model` flags (e.g., `--gen-model claude-sonnet`, `--judge-model chatgpt-4o`). | Unit test: provider detection, flag parsing |
 
-**Exit criteria:** Can send prompts to Claude API and get responses. Rate limiter throttles correctly.
+**Exit criteria:** Can send prompts via Claude CLI subscription (no API key) and get responses. Multiple providers detected and selectable. Rate limiter works for API mode.
 
 ### Phase 4: Judge System
 
