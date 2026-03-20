@@ -1,6 +1,7 @@
 mod config;
 mod datasets;
 mod errors;
+mod llm;
 mod systems;
 mod traits;
 mod types;
