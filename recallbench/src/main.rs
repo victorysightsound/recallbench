@@ -11,6 +11,7 @@ mod runner;
 mod sampling;
 mod systems;
 mod traits;
+mod web;
 mod types;
 
 use std::path::PathBuf;
@@ -188,6 +189,16 @@ enum Commands {
         #[arg(long)]
         type_filter: Option<String>,
     },
+
+    /// Launch local web UI to browse results
+    Serve {
+        /// Port to listen on
+        #[arg(long, default_value = "8888")]
+        port: u16,
+        /// Results directory to serve
+        #[arg(long, default_value = "results")]
+        results_dir: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -301,6 +312,9 @@ async fn main() -> Result<()> {
             }
 
             Ok(())
+        }
+        Commands::Serve { port, results_dir } => {
+            web::serve(port, results_dir).await
         }
     }
 }
