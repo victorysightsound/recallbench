@@ -7,6 +7,7 @@ mod metrics;
 mod report;
 mod resume;
 mod runner;
+mod sampling;
 mod systems;
 mod traits;
 mod types;
@@ -89,6 +90,12 @@ enum Commands {
         /// Resume from existing results
         #[arg(long)]
         resume: bool,
+        /// Quick mode: evaluate a stratified random subset
+        #[arg(long, alias = "dev")]
+        quick: bool,
+        /// Number of questions in quick mode subset
+        #[arg(long)]
+        quick_size: Option<usize>,
     },
 
     /// Compare multiple systems
@@ -192,7 +199,8 @@ async fn main() -> Result<()> {
         Commands::Run {
             system, system_config, dataset, variant,
             concurrency, budget, gen_model, judge_model,
-            output, seed, filter, resume,
+            output, seed: _seed, filter, resume,
+            quick, quick_size,
         } => {
             let system_name = system.as_deref().unwrap_or("echo");
             let gen_m = gen_model.as_deref().unwrap_or(&cfg.defaults.gen_model);
@@ -206,11 +214,16 @@ async fn main() -> Result<()> {
             let filter_types = filter.map(|f| {
                 f.split(',').map(|s| s.trim().to_string()).collect()
             });
+            let qsize = if quick {
+                Some(quick_size.unwrap_or(cfg.defaults.quick_size))
+            } else {
+                None
+            };
 
             cmd_run(
                 system_name, system_config.as_deref(),
                 &dataset, &variant, conc, bgt,
-                gen_m, jdg, &out, filter_types, resume,
+                gen_m, jdg, &out, filter_types, resume, qsize,
             ).await
         }
         Commands::Compare { systems, dataset, variant, output } => {
@@ -378,6 +391,7 @@ async fn cmd_run(
     output: &std::path::Path,
     filter_types: Option<Vec<String>>,
     do_resume: bool,
+    quick_size: Option<usize>,
 ) -> Result<()> {
     // Create output directory
     if let Some(parent) = output.parent() {
@@ -388,10 +402,15 @@ async fn cmd_run(
     let registry = datasets::DatasetRegistry::new();
     let ds = registry.load(dataset, variant, false).await?;
 
+    // Apply quick mode stratified sampling if requested
+    if let Some(size) = quick_size {
+        tracing::info!("Quick mode: stratified sampling {} questions from {}", size, ds.questions().len());
+    }
+
     // Create system adapter
     let system: Box<dyn traits::MemorySystem> = if let Some(config_path) = system_config {
-        let toml = std::fs::read_to_string(config_path)?;
-        Box::new(systems::http::HttpSystemAdapter::from_toml(&toml)?)
+        let toml_str = std::fs::read_to_string(config_path)?;
+        Box::new(systems::http::HttpSystemAdapter::from_toml(&toml_str)?)
     } else {
         match system_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
@@ -420,6 +439,7 @@ async fn cmd_run(
         output_path: output.to_path_buf(),
         filter_types,
         resume: do_resume,
+        quick_size,
     };
 
     let results = runner::run_benchmark(
@@ -436,10 +456,16 @@ async fn cmd_run(
         let lat = metrics::compute_latency(&results);
         let cost = metrics::compute_cost(&results, &metrics::Pricing::default());
 
-        let output = report::table::render_accuracy_table(
-            &[(system.name(), &acc)], dataset, variant,
+        let mode_note = if let Some(size) = quick_size {
+            format!(" (quick mode: {size} questions, stratified)")
+        } else {
+            String::new()
+        };
+
+        let report_output = report::table::render_accuracy_table(
+            &[(system.name(), &acc)], dataset, &format!("{variant}{mode_note}"),
         );
-        println!("\n{output}");
+        println!("\n{report_output}");
         println!("{}", report::table::render_latency_table(&[(system.name(), &lat)]));
         println!("{}", report::table::render_cost_table(&[(system.name(), &cost)]));
     }

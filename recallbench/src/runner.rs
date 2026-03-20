@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 
 use crate::judge;
 use crate::resume;
+use crate::sampling;
 use crate::traits::{BenchmarkDataset, LLMClient, MemorySystem};
 use crate::types::{BenchmarkQuestion, EvalResult};
 
@@ -18,6 +19,8 @@ pub struct RunConfig {
     pub output_path: std::path::PathBuf,
     pub filter_types: Option<Vec<String>>,
     pub resume: bool,
+    /// If Some(n), use stratified sampling to select n questions.
+    pub quick_size: Option<usize>,
 }
 
 /// Run a benchmark: evaluate all questions against a memory system.
@@ -35,18 +38,42 @@ pub async fn run_benchmark(
         std::collections::HashSet::new()
     };
 
+    // Apply quick mode stratified sampling if requested
+    let all_questions = dataset.questions();
+    let sampled: Vec<&BenchmarkQuestion>;
+    let base_questions: &[&BenchmarkQuestion] = if let Some(quick_size) = config.quick_size {
+        sampled = sampling::stratified_sample(all_questions, quick_size, 42);
+        &sampled
+    } else {
+        // Will be filtered below
+        sampled = Vec::new();
+        &sampled // placeholder, overridden below
+    };
+
     // Filter questions
-    let questions: Vec<&BenchmarkQuestion> = dataset.questions().iter()
-        .filter(|q| {
-            if completed_ids.contains(&q.id) {
-                return false;
-            }
-            if let Some(ref types) = config.filter_types {
-                return types.iter().any(|t| t == &q.question_type);
-            }
-            true
-        })
-        .collect();
+    let questions: Vec<&BenchmarkQuestion> = if config.quick_size.is_some() {
+        // Quick mode: use sampled subset, then apply additional filters
+        base_questions.iter()
+            .filter(|q| {
+                if completed_ids.contains(&q.id) { return false; }
+                if let Some(ref types) = config.filter_types {
+                    return types.iter().any(|t| t == &q.question_type);
+                }
+                true
+            })
+            .copied()
+            .collect()
+    } else {
+        all_questions.iter()
+            .filter(|q| {
+                if completed_ids.contains(&q.id) { return false; }
+                if let Some(ref types) = config.filter_types {
+                    return types.iter().any(|t| t == &q.question_type);
+                }
+                true
+            })
+            .collect()
+    };
 
     if questions.is_empty() {
         tracing::info!("No questions to evaluate (all completed or filtered).");

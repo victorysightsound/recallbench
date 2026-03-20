@@ -26,6 +26,8 @@ pub struct Defaults {
     pub output_dir: String,
     #[serde(default)]
     pub seed: Option<u64>,
+    #[serde(default = "default_quick_size")]
+    pub quick_size: usize,
 }
 
 impl Default for Defaults {
@@ -37,9 +39,12 @@ impl Default for Defaults {
             judge_model: default_judge_model(),
             output_dir: default_output_dir(),
             seed: None,
+            quick_size: default_quick_size(),
         }
     }
 }
+
+fn default_quick_size() -> usize { 50 }
 
 fn default_concurrency() -> usize { 10 }
 fn default_token_budget() -> usize { 16384 }
@@ -56,6 +61,22 @@ pub struct LlmConfig {
     pub openai: ProviderConfig,
     #[serde(default)]
     pub gemini: ProviderConfig,
+    /// Named custom OpenAI-compatible endpoints (e.g., "custom", "local").
+    #[serde(flatten)]
+    pub custom_endpoints: std::collections::HashMap<String, CustomEndpoint>,
+}
+
+/// Configuration for an OpenAI-compatible custom endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomEndpoint {
+    pub base_url: String,
+    #[serde(default)]
+    pub api_key_env: String,
+    pub model: String,
+    #[serde(default)]
+    pub rate_limit_rpm: u32,
+    #[serde(default)]
+    pub rate_limit_tpm: u32,
 }
 
 /// Per-provider configuration.
