@@ -3,6 +3,7 @@ mod datasets;
 mod errors;
 mod judge;
 mod llm;
+mod longevity;
 mod metrics;
 mod report;
 mod resume;
@@ -151,6 +152,31 @@ enum Commands {
         dataset: String,
     },
 
+    /// Run longitudinal degradation test
+    Longevity {
+        /// System name
+        #[arg(long, default_value = "echo")]
+        system: String,
+        /// Total sessions to ingest
+        #[arg(long, default_value = "1000")]
+        sessions: usize,
+        /// Number of evaluation checkpoints
+        #[arg(long, default_value = "10")]
+        checkpoints: usize,
+        /// Questions to evaluate at each checkpoint
+        #[arg(long, default_value = "50")]
+        eval_questions: usize,
+        /// Model for generation
+        #[arg(long)]
+        gen_model: Option<String>,
+        /// Model for judging
+        #[arg(long)]
+        judge_model: Option<String>,
+        /// Output file
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+
     /// Export failure analysis from results
     Failures {
         /// Path to results file
@@ -234,6 +260,46 @@ async fn main() -> Result<()> {
         Commands::Calibrate { judge_model, dataset } => {
             println!("Calibrate: {judge_model} on {dataset}");
             println!("(Calibration data not yet bundled)");
+            Ok(())
+        }
+        Commands::Longevity {
+            system, sessions, checkpoints, eval_questions,
+            gen_model, judge_model, output,
+        } => {
+            let gen_m = gen_model.as_deref().unwrap_or(&cfg.defaults.gen_model);
+            let jdg = judge_model.as_deref().unwrap_or(&cfg.defaults.judge_model);
+
+            let mem_system: Box<dyn traits::MemorySystem> = match system.as_str() {
+                "echo" => Box::new(systems::echo::EchoSystem::new()),
+                _ => anyhow::bail!("Unknown system: {system}"),
+            };
+
+            let gen_llm: Arc<dyn traits::LLMClient> = Arc::new(
+                llm::cli::CliLLMClient::new(&llm::LLMRegistry::resolve_provider(gen_m).0, gen_m),
+            );
+            let judge_llm: Arc<dyn traits::LLMClient> = Arc::new(
+                llm::cli::CliLLMClient::new(&llm::LLMRegistry::resolve_provider(jdg).0, jdg),
+            );
+
+            let longevity_config = longevity::LongevityConfig {
+                total_sessions: sessions,
+                checkpoints,
+                eval_questions,
+                token_budget: cfg.defaults.token_budget,
+            };
+
+            let result = longevity::run_longevity(
+                mem_system.as_ref(), gen_llm, judge_llm, &longevity_config,
+            ).await?;
+
+            println!("{}", longevity::render_longevity_table(&result));
+
+            if let Some(out_path) = output {
+                let json = serde_json::to_string_pretty(&result)?;
+                std::fs::write(&out_path, json)?;
+                println!("Results written to {}", out_path.display());
+            }
+
             Ok(())
         }
     }
