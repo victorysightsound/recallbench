@@ -3,6 +3,8 @@ mod datasets;
 mod errors;
 mod judge;
 mod llm;
+mod metrics;
+mod report;
 mod systems;
 mod traits;
 mod types;
