@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecallBench</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>RecallBench</h1>
+        <p>Universal AI Memory System Benchmark</p>
+    </header>
+    <nav id="nav">
+        <a href="#" onclick="showDashboard()" class="active">Dashboard</a>
+    </nav>
+    <main id="content">
+        <div id="dashboard">
+            <h2>Benchmark Runs</h2>
+            <div id="runs-list">Loading...</div>
+        </div>
+        <div id="run-detail" style="display:none">
+            <h2 id="run-title"></h2>
+            <div id="metrics-section"></div>
+            <h3>Questions</h3>
+            <div id="questions-controls">
+                <label><input type="checkbox" id="show-failures-only" onchange="filterQuestions()"> Show failures only</label>
+                <select id="type-filter" onchange="filterQuestions()"><option value="">All types</option></select>
+            </div>
+            <table id="questions-table">
+                <thead><tr><th>ID</th><th>Type</th><th>Correct</th><th>Ground Truth</th><th>Hypothesis</th></tr></thead>
+                <tbody id="questions-body"></tbody>
+            </table>
+        </div>
+    </main>
+    <script src="/static/app.js"></script>
+</body>
+</html>
