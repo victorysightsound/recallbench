@@ -31,3 +31,4 @@ rust-embed = { workspace = true }
 tower-http = { workspace = true }
 dirs = { workspace = true }
 futures-util = { workspace = true }
+which = { workspace = true }
