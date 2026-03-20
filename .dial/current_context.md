@@ -1,4 +1,4 @@
-# Task: Phase 1.1: Workspace setup — convert to Cargo workspace with recallbench binary crate, add workspace dependencies, configure build/test
+# Task: Phase 1.2: Core types — implement types.rs: BenchmarkQuestion, ConversationSession, Turn, EvalResult, IngestStats, RetrievalResult with serde derive
 
 ## ⚠️ SIGNS (Critical Rules)
 
