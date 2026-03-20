@@ -1,3 +1,4 @@
+mod traits;
 mod types;
 
 fn main() {

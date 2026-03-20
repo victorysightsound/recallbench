@@ -1,4 +1,4 @@
-# Task: Phase 1.2: Core types — implement types.rs: BenchmarkQuestion, ConversationSession, Turn, EvalResult, IngestStats, RetrievalResult with serde derive
+# Task: Phase 1.3: Trait definitions — implement traits.rs: MemorySystem, LLMClient, BenchmarkDataset async traits with full documentation
 
 ## ⚠️ SIGNS (Critical Rules)
 
