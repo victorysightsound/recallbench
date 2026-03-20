@@ -1,0 +1,31 @@
+[package]
+name = "recallbench"
+description = "A universal benchmark harness for AI memory systems"
+keywords = ["benchmark", "memory", "ai", "evaluation", "recall"]
+categories = ["development-tools::testing"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+indicatif = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+comfy-table = { workspace = true }
+toml = { workspace = true }
+csv = { workspace = true }
+governor = { workspace = true }
+hdrhistogram = { workspace = true }
+axum = { workspace = true }
+rust-embed = { workspace = true }
+tower-http = { workspace = true }
