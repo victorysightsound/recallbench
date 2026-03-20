@@ -5,6 +5,8 @@ mod judge;
 mod llm;
 mod metrics;
 mod report;
+mod resume;
+mod runner;
 mod systems;
 mod traits;
 mod types;
