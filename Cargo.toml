@@ -1,0 +1,12 @@
+[package]
+name = "recallbench"
+version = "0.0.1"
+edition = "2024"
+description = "A universal benchmark harness for AI memory systems"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/victorysightsound/recallbench"
+keywords = ["benchmark", "memory", "ai", "evaluation", "recall"]
+categories = ["development-tools::testing"]
+authors = ["John Deaton <john@victorysightsound.com>"]
+
+[dependencies]
