@@ -1,6 +1,11 @@
-pub mod download;
-pub mod longmemeval;
+pub mod convomem;
 pub mod custom;
+pub mod download;
+pub mod halumem;
+pub mod locomo;
+pub mod longmemeval;
+pub mod mab;
+pub mod membench;
 
 use std::collections::HashMap;
 
@@ -31,14 +36,36 @@ impl DatasetRegistry {
     }
 
     fn register_defaults(&mut self) {
-        self.datasets.insert(
-            "longmemeval".to_string(),
-            DatasetInfo {
-                name: "longmemeval".to_string(),
-                description: "LongMemEval (ICLR 2025) — 500 questions testing 5 memory abilities across 7 question types".to_string(),
-                variants: vec!["oracle".to_string(), "small".to_string(), "medium".to_string()],
-            },
-        );
+        self.datasets.insert("longmemeval".to_string(), DatasetInfo {
+            name: "longmemeval".to_string(),
+            description: "LongMemEval (ICLR 2025) — 500 questions, 5 memory abilities, 7 types".to_string(),
+            variants: vec!["oracle".to_string(), "small".to_string(), "medium".to_string()],
+        });
+        self.datasets.insert("locomo".to_string(), DatasetInfo {
+            name: "locomo".to_string(),
+            description: "LoCoMo (Snap Research) — long-context conversation memory".to_string(),
+            variants: vec!["default".to_string()],
+        });
+        self.datasets.insert("convomem".to_string(), DatasetInfo {
+            name: "convomem".to_string(),
+            description: "ConvoMem — conversational memory evaluation".to_string(),
+            variants: vec!["default".to_string()],
+        });
+        self.datasets.insert("membench".to_string(), DatasetInfo {
+            name: "membench".to_string(),
+            description: "MemBench (ACL 2025) — multi-aspect memory evaluation".to_string(),
+            variants: vec!["default".to_string()],
+        });
+        self.datasets.insert("memoryagentbench".to_string(), DatasetInfo {
+            name: "memoryagentbench".to_string(),
+            description: "MemoryAgentBench (ICLR 2026) — selective forgetting, fact consolidation".to_string(),
+            variants: vec!["default".to_string()],
+        });
+        self.datasets.insert("halumem".to_string(), DatasetInfo {
+            name: "halumem".to_string(),
+            description: "HaluMem (MemTensor) — memory hallucination detection".to_string(),
+            variants: vec!["medium".to_string(), "long".to_string()],
+        });
     }
 
     /// List all available datasets.
@@ -60,7 +87,12 @@ impl DatasetRegistry {
                 let dataset = longmemeval::LongMemEvalDataset::load(variant, force_download).await?;
                 Ok(Box::new(dataset))
             }
-            _ => anyhow::bail!("Unknown dataset: {name}. Run 'recallbench datasets' to see available datasets."),
+            // These datasets require the user to provide the data file path
+            // since they don't have standardized download URLs
+            _ => anyhow::bail!(
+                "Dataset '{name}' requires a local file. Use 'recallbench validate <path>' with a custom dataset file, \
+                or download the dataset manually and use --dataset custom."
+            ),
         }
     }
 }
@@ -76,18 +108,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_has_longmemeval() {
+    fn registry_has_all_datasets() {
         let registry = DatasetRegistry::new();
-        let info = registry.get("longmemeval").unwrap();
-        assert_eq!(info.name, "longmemeval");
-        assert!(info.variants.contains(&"oracle".to_string()));
+        assert!(registry.get("longmemeval").is_some());
+        assert!(registry.get("locomo").is_some());
+        assert!(registry.get("convomem").is_some());
+        assert!(registry.get("membench").is_some());
+        assert!(registry.get("memoryagentbench").is_some());
+        assert!(registry.get("halumem").is_some());
     }
 
     #[test]
-    fn registry_list() {
+    fn registry_list_sorted() {
         let registry = DatasetRegistry::new();
         let datasets = registry.list();
-        assert!(!datasets.is_empty());
+        assert_eq!(datasets.len(), 6);
+        // Verify sorted
+        let names: Vec<_> = datasets.iter().map(|d| d.name.as_str()).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
     }
 
     #[test]
