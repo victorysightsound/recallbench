@@ -1,6 +1,7 @@
 pub mod anthropic;
 pub mod cli;
 pub mod codex;
+pub mod compatible;
 pub mod gemini;
 pub mod openai;
 pub mod rate_limit;
