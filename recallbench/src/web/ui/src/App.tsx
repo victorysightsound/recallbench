@@ -513,8 +513,16 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
                               ? <span class="badge badge-success badge-sm">Pass</span>
                               : <span class="badge badge-error badge-sm">Fail</span>}
                           </td>
-                          <td class="max-w-xs"><div class="truncate prose prose-sm max-w-none [&>*]:inline" innerHTML={marked.parse(q.ground_truth || "", { async: false }) as string} /></td>
-                          <td class="max-w-xs"><div class="truncate prose prose-sm max-w-none [&>*]:inline" innerHTML={marked.parse(q.hypothesis || "", { async: false }) as string} /></td>
+                          <td class="max-w-xs">
+                            <div class="tooltip tooltip-bottom text-left w-full" data-tip={stripMd(q.ground_truth)}>
+                              <div class="truncate max-w-xs prose prose-sm max-w-none [&>*]:inline [&>*]:m-0" innerHTML={marked.parse(q.ground_truth || "", { async: false }) as string} />
+                            </div>
+                          </td>
+                          <td class="max-w-xs">
+                            <div class="tooltip tooltip-bottom text-left w-full" data-tip={stripMd(q.hypothesis)}>
+                              <div class="truncate max-w-xs prose prose-sm max-w-none [&>*]:inline [&>*]:m-0" innerHTML={marked.parse(q.hypothesis || "", { async: false }) as string} />
+                            </div>
+                          </td>
                         </tr>
                         <Show when={showDetail()}>
                           <tr>
