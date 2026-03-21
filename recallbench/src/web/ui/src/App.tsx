@@ -1,4 +1,5 @@
 import { createSignal, createResource, For, Show, Component, onCleanup } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 
 interface RunSummary {
   id: string;
@@ -219,14 +220,12 @@ const StatCard: Component<{ label: string; value: string; class?: string }> = (p
 );
 
 const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
-  const [runs, setRuns] = createSignal<RunSummary[]>([]);
-  const [loaded, setLoaded] = createSignal(false);
+  const [state, setState] = createStore<{ runs: RunSummary[]; loaded: boolean }>({ runs: [], loaded: false });
 
-  // Initial fetch + auto-refresh every 5 seconds with granular signal updates
   const refresh = async () => {
     const data = await fetchRuns();
-    setRuns(data);
-    setLoaded(true);
+    setState("runs", reconcile(data, { key: "id", merge: true }));
+    setState("loaded", true);
   };
   refresh();
   const interval = setInterval(refresh, 5000);
@@ -235,9 +234,9 @@ const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
   return (
     <div>
       <h2 class="text-2xl font-bold mb-4">Benchmark Runs</h2>
-      <Show when={loaded()} fallback={<div class="skeleton h-32 w-full" />}>
+      <Show when={state.loaded} fallback={<div class="skeleton h-32 w-full" />}>
         <Show
-          when={runs().length > 0}
+          when={state.runs.length > 0}
           fallback={
             <div class="card bg-base-200">
               <div class="card-body items-center text-center py-12">
@@ -250,7 +249,7 @@ const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
           }
         >
           <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <For each={runs()}>
+            <For each={state.runs}>
               {(run) => <RunCard run={run} onClick={() => {}} onExpand={() => props.onSelectRun(run.id)} />}
             </For>
           </div>
@@ -261,27 +260,27 @@ const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
 };
 
 const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
-  const [metricsData, setMetricsData] = createSignal<Metrics | null>(null);
-  const [questionsData, setQuestionsData] = createSignal<Question[]>([]);
+  const [store, setStore] = createStore<{ metrics: Metrics | null; questions: Question[] }>({
+    metrics: null,
+    questions: [],
+  });
   const [failOnly, setFailOnly] = createSignal(false);
   const [typeFilter, setTypeFilter] = createSignal("");
 
-  // Initial fetch + auto-refresh every 5 seconds with granular signal updates
   const refresh = async () => {
     const [m, q] = await Promise.all([
       fetchMetrics(props.runId),
       fetchQuestions(props.runId),
     ]);
-    setMetricsData(m);
-    setQuestionsData(q);
+    setStore("metrics", reconcile(m));
+    setStore("questions", reconcile(q, { key: "question_id", merge: true }));
   };
   refresh();
   const interval = setInterval(refresh, 5000);
   onCleanup(() => clearInterval(interval));
 
-  // Alias for template compatibility
-  const metrics = metricsData;
-  const questions = questionsData;
+  const metrics = () => store.metrics;
+  const questions = () => store.questions;
 
   const filteredQuestions = () => {
     let qs = questions() || [];
