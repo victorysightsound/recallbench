@@ -1,0 +1,25 @@
+[2m2026-03-21T12:23:27.852753Z[0m [32m INFO[0m [2mmindcore_bench::download[0m[2m:[0m Dataset already cached: /Users/johndeaton/.cache/mindcore-bench/data/longmemeval_oracle.json (15.4MB)
+Running LongMemEval benchmark: 500 questions, budget=0 tokens
+Generation: sonnet | Judge: sonnet | Verify: on (multi-session, temporal, knowledge-update)
+Using Claude Code CLI (subscription, no API tokens)
+
+
+LongMemEval Benchmark Results
+============================
+
+Per-Type Accuracy:
+  Knowledge Update                76/78  (97.4%)
+  Multi-Session                  121/133 (91.0%)
+  Single-Session (Assistant)      55/56  (98.2%)
+  Single-Session (Preference)     27/30  (90.0%)
+  Single-Session (User)           69/70  (98.6%)
+  Temporal Reasoning             130/133 (97.7%)
+
+Task-Averaged Accuracy:  95.5%
+Overall Accuracy:        95.6%
+Abstention Accuracy:     96.7%
+
+Total Questions: 500
+Total Tokens:    0
+
+Results saved to: results/longmemeval_v3b.jsonl
