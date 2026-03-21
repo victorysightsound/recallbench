@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Library code is used through CLI subcommands, not all paths exercised in every build
+
 mod config;
 mod datasets;
 mod errors;
