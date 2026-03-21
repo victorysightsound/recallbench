@@ -514,13 +514,13 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
                               : <span class="badge badge-error badge-sm">Fail</span>}
                           </td>
                           <td class="max-w-xs">
-                            <div class="tooltip tooltip-bottom text-left w-full" data-tip={stripMd(q.ground_truth)}>
-                              <div class="truncate max-w-xs prose prose-sm max-w-none [&>*]:inline [&>*]:m-0" innerHTML={marked.parse(q.ground_truth || "", { async: false }) as string} />
+                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm w-full" data-tip={stripMd(q.ground_truth)}>
+                              <div class="truncate max-w-xs text-left overflow-hidden whitespace-nowrap text-ellipsis">{stripMd(q.ground_truth)}</div>
                             </div>
                           </td>
                           <td class="max-w-xs">
-                            <div class="tooltip tooltip-bottom text-left w-full" data-tip={stripMd(q.hypothesis)}>
-                              <div class="truncate max-w-xs prose prose-sm max-w-none [&>*]:inline [&>*]:m-0" innerHTML={marked.parse(q.hypothesis || "", { async: false }) as string} />
+                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm w-full" data-tip={stripMd(q.hypothesis)}>
+                              <div class="truncate max-w-xs text-left overflow-hidden whitespace-nowrap text-ellipsis">{stripMd(q.hypothesis)}</div>
                             </div>
                           </td>
                         </tr>
