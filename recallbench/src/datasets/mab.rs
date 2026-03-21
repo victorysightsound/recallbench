@@ -4,7 +4,13 @@ use serde::Deserialize;
 use crate::traits::BenchmarkDataset;
 use crate::types::{BenchmarkQuestion, ConversationSession, Turn};
 
-/// MemoryAgentBench dataset (ICLR 2026) — selective forgetting + fact consolidation.
+/// MemoryAgentBench dataset (ICLR 2026).
+///
+/// NOTE: The original dataset is in Parquet format on HuggingFace (ai-hyz/MemoryAgentBench).
+/// This parser supports a JSON export of that data. To use:
+/// 1. pip install datasets
+/// 2. python -c "from datasets import load_dataset; ds = load_dataset('ai-hyz/MemoryAgentBench'); ds.to_json('mab_data.json')"
+/// 3. recallbench run --dataset custom --variant default (with the exported JSON)
 pub struct MemoryAgentBenchDataset {
     questions: Vec<BenchmarkQuestion>,
 }
@@ -12,68 +18,104 @@ pub struct MemoryAgentBenchDataset {
 #[derive(Debug, Deserialize)]
 struct RawEntry {
     #[serde(default)]
-    id: String,
+    context: String,
     #[serde(default)]
-    question: String,
+    questions: Vec<String>,
     #[serde(default)]
-    answer: serde_json::Value,
-    #[serde(default, alias = "type", alias = "task_type")]
-    question_type: String,
+    answers: Vec<Vec<String>>,
     #[serde(default)]
-    interactions: Vec<RawInteraction>,
+    metadata: Option<RawMetadata>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RawInteraction {
+struct RawMetadata {
     #[serde(default)]
-    session_id: Option<String>,
+    source: Option<String>,
     #[serde(default)]
-    messages: Vec<RawMessage>,
+    question_types: Option<Vec<String>>,
+    #[serde(default)]
+    question_ids: Option<Vec<String>>,
+    #[serde(default)]
+    haystack_sessions: Option<Vec<Vec<Vec<RawMessage>>>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RawMessage {
     #[serde(default)]
-    role: String,
-    #[serde(default)]
     content: String,
+    #[serde(default)]
+    role: String,
 }
 
 impl MemoryAgentBenchDataset {
     pub fn from_json(json: &str) -> Result<Self> {
-        let raw: Vec<RawEntry> = serde_json::from_str(json)
+        let entries: Vec<RawEntry> = serde_json::from_str(json)
             .context("Failed to parse MemoryAgentBench JSON")?;
 
-        let questions = raw.into_iter().map(|entry| {
-            let ground_truth = match entry.answer {
-                serde_json::Value::String(s) => vec![s],
-                serde_json::Value::Array(arr) => arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
-                other => vec![other.to_string()],
-            };
+        let mut questions = Vec::new();
 
-            let sessions: Vec<ConversationSession> = entry.interactions.iter()
-                .enumerate()
-                .map(|(i, interaction)| ConversationSession {
-                    id: interaction.session_id.clone().unwrap_or_else(|| format!("interaction_{i}")),
-                    date: None,
-                    turns: interaction.messages.iter().map(|m| Turn {
-                        role: m.role.clone(),
-                        content: m.content.clone(),
-                    }).collect(),
+        for (ei, entry) in entries.iter().enumerate() {
+            let source = entry.metadata.as_ref()
+                .and_then(|m| m.source.as_deref())
+                .unwrap_or("unknown");
+
+            // Build sessions from metadata if available
+            let sessions: Vec<ConversationSession> = entry.metadata.as_ref()
+                .and_then(|m| m.haystack_sessions.as_ref())
+                .map(|hs| {
+                    hs.iter().enumerate().map(|(si, session_group)| {
+                        let turns: Vec<Turn> = session_group.iter()
+                            .flat_map(|msgs| msgs.iter().map(|m| Turn {
+                                role: m.role.clone(),
+                                content: m.content.clone(),
+                            }))
+                            .collect();
+                        ConversationSession {
+                            id: format!("entry{ei}_session{si}"),
+                            date: None,
+                            turns,
+                        }
+                    }).collect()
                 })
-                .collect();
+                .unwrap_or_else(|| {
+                    // Fallback: use context as a single session
+                    if entry.context.is_empty() { return vec![]; }
+                    vec![ConversationSession {
+                        id: format!("entry{ei}_context"),
+                        date: None,
+                        turns: vec![Turn { role: "user".to_string(), content: entry.context.clone() }],
+                    }]
+                });
 
-            BenchmarkQuestion {
-                id: entry.id,
-                question_type: if entry.question_type.is_empty() { "event-qa".to_string() } else { entry.question_type },
-                question: entry.question,
-                ground_truth,
-                question_date: None,
-                sessions,
-                is_abstention: false,
-                metadata: std::collections::HashMap::new(),
+            for (qi, question) in entry.questions.iter().enumerate() {
+                let ground_truth = entry.answers.get(qi)
+                    .cloned()
+                    .unwrap_or_default();
+
+                let qtype = entry.metadata.as_ref()
+                    .and_then(|m| m.question_types.as_ref())
+                    .and_then(|types| types.get(qi))
+                    .cloned()
+                    .unwrap_or_else(|| source.to_string());
+
+                let qid = entry.metadata.as_ref()
+                    .and_then(|m| m.question_ids.as_ref())
+                    .and_then(|ids| ids.get(qi))
+                    .cloned()
+                    .unwrap_or_else(|| format!("mab_e{ei}_q{qi}"));
+
+                questions.push(BenchmarkQuestion {
+                    id: qid,
+                    question_type: qtype,
+                    question: question.clone(),
+                    ground_truth,
+                    question_date: None,
+                    sessions: sessions.clone(),
+                    is_abstention: false,
+                    metadata: std::collections::HashMap::new(),
+                });
             }
-        }).collect();
+        }
 
         Ok(Self { questions })
     }
@@ -82,7 +124,7 @@ impl MemoryAgentBenchDataset {
 impl BenchmarkDataset for MemoryAgentBenchDataset {
     fn name(&self) -> &str { "memoryagentbench" }
     fn variant(&self) -> &str { "default" }
-    fn description(&self) -> &str { "MemoryAgentBench (ICLR 2026) — selective forgetting and fact consolidation" }
+    fn description(&self) -> &str { "MemoryAgentBench (ICLR 2026) — selective forgetting and fact consolidation (requires Parquet-to-JSON export)" }
     fn questions(&self) -> &[BenchmarkQuestion] { &self.questions }
     fn question_types(&self) -> Vec<String> {
         let mut types: Vec<String> = self.questions.iter()
@@ -99,22 +141,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_mab() {
+    fn parse_mab_json_export() {
         let json = r#"[{
-            "id": "mab1",
-            "question": "What event happened first?",
-            "answer": "meeting",
-            "task_type": "event-qa",
-            "interactions": [{
-                "session_id": "s1",
-                "messages": [
-                    {"role": "user", "content": "I had a meeting today"},
-                    {"role": "assistant", "content": "Got it"}
-                ]
-            }]
+            "context": "Long conversation history here...",
+            "questions": ["What happened first?", "Who was involved?"],
+            "answers": [["meeting"], ["Alice", "Bob"]],
+            "metadata": {
+                "source": "eventqa",
+                "question_types": ["event-qa", "entity"],
+                "question_ids": ["q001", "q002"]
+            }
         }]"#;
         let ds = MemoryAgentBenchDataset::from_json(json).unwrap();
-        assert_eq!(ds.questions().len(), 1);
+        assert_eq!(ds.questions().len(), 2);
         assert_eq!(ds.questions()[0].question_type, "event-qa");
+        assert_eq!(ds.questions()[1].ground_truth, vec!["Alice", "Bob"]);
     }
 }

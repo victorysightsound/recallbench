@@ -48,13 +48,13 @@ impl DatasetRegistry {
         });
         self.datasets.insert("convomem".to_string(), DatasetInfo {
             name: "convomem".to_string(),
-            description: "ConvoMem — conversational memory evaluation".to_string(),
-            variants: vec!["default".to_string()],
+            description: "ConvoMem (Salesforce) — conversational memory, 6 evidence categories".to_string(),
+            variants: vec!["user_evidence".to_string(), "assistant_facts".to_string(), "changing".to_string(), "abstention".to_string(), "preference".to_string(), "implicit_connection".to_string()],
         });
         self.datasets.insert("membench".to_string(), DatasetInfo {
             name: "membench".to_string(),
-            description: "MemBench (ACL 2025) — multi-aspect memory evaluation".to_string(),
-            variants: vec!["default".to_string()],
+            description: "MemBench (ACL 2025) — multi-aspect memory evaluation, multiple-choice QA".to_string(),
+            variants: vec!["simple".to_string(), "aggregative".to_string(), "comparative".to_string(), "conditional".to_string(), "knowledge_update".to_string(), "highlevel".to_string()],
         });
         self.datasets.insert("memoryagentbench".to_string(), DatasetInfo {
             name: "memoryagentbench".to_string(),
@@ -80,19 +80,53 @@ impl DatasetRegistry {
         self.datasets.get(name)
     }
 
-    /// Load a dataset by name and variant.
-    pub async fn load(&self, name: &str, variant: &str, force_download: bool) -> Result<Box<dyn BenchmarkDataset>> {
+    /// Resolve a dataset name, including category aliases.
+    fn resolve_name<'a>(&self, name: &'a str) -> &'a str {
         match name {
+            "recall" => "longmemeval",
+            "longturn" => "locomo",
+            "conversation" => "convomem",
+            "multiaspect" => "membench",
+            "forgetting" => "memoryagentbench",
+            "hallucination" => "halumem",
+            other => other,
+        }
+    }
+
+    /// Load a dataset by name (or alias) and variant.
+    pub async fn load(&self, name: &str, variant: &str, force_download: bool) -> Result<Box<dyn BenchmarkDataset>> {
+        let resolved = self.resolve_name(name);
+        match resolved {
             "longmemeval" => {
                 let dataset = longmemeval::LongMemEvalDataset::load(variant, force_download).await?;
                 Ok(Box::new(dataset))
             }
-            // These datasets require the user to provide the data file path
-            // since they don't have standardized download URLs
-            _ => anyhow::bail!(
-                "Dataset '{name}' requires a local file. Use 'recallbench validate <path>' with a custom dataset file, \
-                or download the dataset manually and use --dataset custom."
-            ),
+            "locomo" => {
+                let dataset = locomo::LoCoMoDataset::load(force_download).await?;
+                Ok(Box::new(dataset))
+            }
+            "convomem" => {
+                let dataset = convomem::ConvoMemDataset::load(variant, force_download).await?;
+                Ok(Box::new(dataset))
+            }
+            "membench" => {
+                let category = if variant == "default" { "simple" } else { variant };
+                let dataset = membench::MemBenchDataset::load(category, force_download).await?;
+                Ok(Box::new(dataset))
+            }
+            "halumem" => {
+                let dataset = halumem::HaluMemDataset::load(variant, force_download).await?;
+                Ok(Box::new(dataset))
+            }
+            "memoryagentbench" => {
+                anyhow::bail!(
+                    "MemoryAgentBench uses Parquet format. Export to JSON first:\n\
+                     pip install datasets\n\
+                     python -c \"from datasets import load_dataset; import json; ds = load_dataset('ai-hyz/MemoryAgentBench'); [open(f'mab_{{s}}.json','w').write(json.dumps(list(ds[s]))) for s in ds]\"\n\
+                     Then use: recallbench validate mab_Accurate_Retrieval.json"
+                )
+            }
+            _ => anyhow::bail!("Unknown dataset: {name}. Run 'recallbench datasets' to see available datasets."),
         }
     }
 }

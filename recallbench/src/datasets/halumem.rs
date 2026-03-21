@@ -3,80 +3,118 @@ use serde::Deserialize;
 
 use crate::traits::BenchmarkDataset;
 use crate::types::{BenchmarkQuestion, ConversationSession, Turn};
+use super::download::download_dataset;
 
-/// HaluMem dataset (MemTensor) — memory hallucination detection.
+const MEDIUM_URL: &str = "https://huggingface.co/datasets/IAAR-Shanghai/HaluMem/resolve/main/HaluMem-Medium.jsonl";
+const LONG_URL: &str = "https://huggingface.co/datasets/IAAR-Shanghai/HaluMem/resolve/main/HaluMem-Long.jsonl";
+
+/// HaluMem dataset (MemTensor/IAAR-Shanghai).
+/// Memory hallucination detection across extraction, update, and QA axes.
 pub struct HaluMemDataset {
     variant: String,
     questions: Vec<BenchmarkQuestion>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RawEntry {
+struct RawUser {
+    uuid: String,
     #[serde(default)]
-    id: String,
+    persona_info: String,
     #[serde(default)]
-    question: String,
-    #[serde(default)]
-    answer: serde_json::Value,
-    #[serde(default, alias = "type", alias = "operation_type")]
-    question_type: String,
-    #[serde(default)]
-    memory_points: Vec<RawMemoryPoint>,
-    #[serde(default)]
-    context: Option<String>,
+    sessions: Vec<RawSession>,
 }
 
 #[derive(Debug, Deserialize)]
-struct RawMemoryPoint {
+struct RawSession {
     #[serde(default)]
+    start_time: Option<String>,
+    #[serde(default)]
+    dialogue: Vec<RawDialogueTurn>,
+    #[serde(default)]
+    memory_points: Vec<RawMemoryPoint>,
+    #[serde(default)]
+    questions: Vec<RawQuestion>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawDialogueTurn {
+    role: String,
     content: String,
     #[serde(default)]
     timestamp: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RawMemoryPoint {
+    #[serde(default)]
+    memory_content: String,
+    #[serde(default)]
+    memory_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawQuestion {
+    question: String,
+    answer: String,
+    #[serde(default)]
+    difficulty: Option<String>,
+    #[serde(default)]
+    question_type: Option<String>,
+}
+
 impl HaluMemDataset {
-    pub fn from_json(variant: &str, json: &str) -> Result<Self> {
-        let raw: Vec<RawEntry> = serde_json::from_str(json)
-            .context("Failed to parse HaluMem JSON")?;
+    pub async fn load(variant: &str, force_download: bool) -> Result<Self> {
+        let (url, filename) = match variant {
+            "medium" => (MEDIUM_URL, "halumem_medium.jsonl"),
+            "long" => (LONG_URL, "halumem_long.jsonl"),
+            _ => anyhow::bail!("Unknown HaluMem variant: {variant}. Use medium or long."),
+        };
+        let path = download_dataset(url, filename, force_download).await?;
+        let content = tokio::fs::read_to_string(&path).await?;
+        Self::from_jsonl(variant, &content)
+    }
 
-        let questions = raw.into_iter().map(|entry| {
-            let ground_truth = match entry.answer {
-                serde_json::Value::String(s) => vec![s],
-                serde_json::Value::Bool(b) => vec![b.to_string()],
-                serde_json::Value::Array(arr) => arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
-                other => vec![other.to_string()],
-            };
+    pub fn from_jsonl(variant: &str, jsonl: &str) -> Result<Self> {
+        let mut questions = Vec::new();
 
-            let mut sessions = Vec::new();
-            if !entry.memory_points.is_empty() {
-                sessions.push(ConversationSession {
-                    id: "memories".to_string(),
-                    date: None,
-                    turns: entry.memory_points.iter().map(|mp| Turn {
-                        role: "user".to_string(),
-                        content: mp.content.clone(),
+        for line in jsonl.lines() {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+
+            let user: RawUser = serde_json::from_str(line)
+                .context("Failed to parse HaluMem JSONL line")?;
+
+            // Build sessions from dialogue
+            let sessions: Vec<ConversationSession> = user.sessions.iter()
+                .enumerate()
+                .map(|(i, s)| ConversationSession {
+                    id: format!("{}_{}", user.uuid, i),
+                    date: s.start_time.clone(),
+                    turns: s.dialogue.iter().map(|t| Turn {
+                        role: t.role.clone(),
+                        content: t.content.clone(),
                     }).collect(),
-                });
-            }
-            if let Some(ctx) = &entry.context {
-                sessions.push(ConversationSession {
-                    id: "context".to_string(),
-                    date: None,
-                    turns: vec![Turn { role: "user".to_string(), content: ctx.clone() }],
-                });
-            }
+                })
+                .collect();
 
-            BenchmarkQuestion {
-                id: entry.id,
-                question_type: if entry.question_type.is_empty() { "hallucination-detection".to_string() } else { entry.question_type },
-                question: entry.question,
-                ground_truth,
-                question_date: None,
-                sessions,
-                is_abstention: false,
-                metadata: std::collections::HashMap::new(),
+            // Extract questions from QA sessions
+            for (si, session) in user.sessions.iter().enumerate() {
+                for (qi, q) in session.questions.iter().enumerate() {
+                    let qtype = q.question_type.as_deref().unwrap_or("memory-qa");
+
+                    questions.push(BenchmarkQuestion {
+                        id: format!("{}_s{}_q{}", user.uuid, si, qi),
+                        question_type: qtype.to_string(),
+                        question: q.question.clone(),
+                        ground_truth: vec![q.answer.clone()],
+                        question_date: session.start_time.clone(),
+                        sessions: sessions.clone(),
+                        is_abstention: false,
+                        metadata: std::collections::HashMap::new(),
+                    });
+                }
             }
-        }).collect();
+        }
 
         Ok(Self { variant: variant.to_string(), questions })
     }
@@ -85,7 +123,7 @@ impl HaluMemDataset {
 impl BenchmarkDataset for HaluMemDataset {
     fn name(&self) -> &str { "halumem" }
     fn variant(&self) -> &str { &self.variant }
-    fn description(&self) -> &str { "HaluMem (MemTensor) — memory hallucination detection" }
+    fn description(&self) -> &str { "HaluMem (IAAR-Shanghai) — memory hallucination detection across extraction, update, and QA" }
     fn questions(&self) -> &[BenchmarkQuestion] { &self.questions }
     fn question_types(&self) -> Vec<String> {
         let mut types: Vec<String> = self.questions.iter()
@@ -102,19 +140,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_halumem() {
-        let json = r#"[{
-            "id": "hm1",
-            "question": "Is this memory accurate?",
-            "answer": "no",
-            "operation_type": "extraction",
-            "memory_points": [
-                {"content": "User likes pizza", "timestamp": "2024-01-15"}
-            ]
-        }]"#;
-        let ds = HaluMemDataset::from_json("medium", json).unwrap();
+    fn parse_halumem_jsonl() {
+        let jsonl = r#"{"uuid":"test-001","persona_info":"Name: Test User","sessions":[{"start_time":"Sep 04, 2025","dialogue":[{"role":"user","content":"Hello","timestamp":"2025-09-04"},{"role":"assistant","content":"Hi!","timestamp":"2025-09-04"}],"memory_points":[{"memory_content":"User greeted","memory_type":"Event Memory"}],"questions":[{"question":"What did the user say?","answer":"Hello","difficulty":"easy","question_type":"Generalization & Application"}]}]}"#;
+        let ds = HaluMemDataset::from_jsonl("medium", jsonl).unwrap();
         assert_eq!(ds.questions().len(), 1);
-        assert_eq!(ds.questions()[0].question_type, "extraction");
-        assert_eq!(ds.variant(), "medium");
+        assert_eq!(ds.questions()[0].ground_truth, vec!["Hello"]);
+        assert_eq!(ds.questions()[0].sessions.len(), 1);
+        assert_eq!(ds.questions()[0].sessions[0].turns.len(), 2);
     }
 }

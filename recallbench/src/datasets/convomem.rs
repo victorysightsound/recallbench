@@ -3,81 +3,114 @@ use serde::Deserialize;
 
 use crate::traits::BenchmarkDataset;
 use crate::types::{BenchmarkQuestion, ConversationSession, Turn};
+use super::download::download_dataset;
 
-/// ConvoMem dataset (used by memorybench/Supermemory).
+const BASE_URL: &str = "https://huggingface.co/datasets/Salesforce/ConvoMem/resolve/main/core_benchmark/pre_mixed_testcases";
+
+/// ConvoMem categories with their download paths.
+const CATEGORIES: &[(&str, &str)] = &[
+    ("user_evidence", "user_evidence/1_evidence/batched_000.json"),
+    ("assistant_facts", "assistant_facts_evidence/1_evidence/batched_000.json"),
+    ("changing", "changing_evidence/2_evidence/batched_000.json"),
+    ("abstention", "abstention_evidence/1_evidence/batched_000.json"),
+    ("preference", "preference_evidence/1_evidence/batched_000.json"),
+    ("implicit_connection", "implicit_connection_evidence/1_evidence/batched_000.json"),
+];
+
+/// ConvoMem dataset (Salesforce AI Research).
 pub struct ConvoMemDataset {
     questions: Vec<BenchmarkQuestion>,
+    category: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct RawEntry {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
+struct RawTestCase {
+    #[serde(rename = "evidenceItems")]
+    evidence_items: Vec<RawEvidenceItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawEvidenceItem {
     question: String,
+    answer: String,
+    #[serde(default, rename = "message_evidences")]
+    message_evidences: Vec<RawMessage>,
     #[serde(default)]
-    answer: serde_json::Value,
-    #[serde(default, alias = "type")]
-    question_type: String,
-    #[serde(default)]
-    conversations: Vec<Vec<RawMessage>>,
+    conversations: Vec<RawConversation>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RawMessage {
     #[serde(default)]
-    role: String,
+    speaker: String,
     #[serde(default)]
-    content: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawConversation {
+    #[serde(default)]
+    messages: Vec<RawMessage>,
 }
 
 impl ConvoMemDataset {
-    pub fn from_json(json: &str) -> Result<Self> {
-        let raw: Vec<RawEntry> = serde_json::from_str(json)
+    /// Load a specific category.
+    pub async fn load(category: &str, force_download: bool) -> Result<Self> {
+        let (cat_name, path) = CATEGORIES.iter()
+            .find(|(name, _)| *name == category)
+            .ok_or_else(|| anyhow::anyhow!("Unknown ConvoMem category: {category}. Available: {}",
+                CATEGORIES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")))?;
+
+        let url = format!("{BASE_URL}/{path}");
+        let filename = format!("convomem_{cat_name}.json");
+        let file_path = download_dataset(&url, &filename, force_download).await?;
+        let content = tokio::fs::read_to_string(&file_path).await?;
+        Self::from_json(cat_name, &content)
+    }
+
+    pub fn from_json(category: &str, json: &str) -> Result<Self> {
+        let test_cases: Vec<RawTestCase> = serde_json::from_str(json)
             .context("Failed to parse ConvoMem JSON")?;
 
-        let questions = raw.into_iter().map(|entry| {
-            let ground_truth = match entry.answer {
-                serde_json::Value::String(s) => vec![s],
-                serde_json::Value::Array(arr) => arr.iter().map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                }).collect(),
-                other => vec![other.to_string()],
-            };
+        let mut questions = Vec::new();
+        let mut qi = 0;
 
-            let sessions: Vec<ConversationSession> = entry.conversations.iter()
-                .enumerate()
-                .map(|(i, conv)| ConversationSession {
-                    id: format!("session_{i}"),
-                    date: None,
-                    turns: conv.iter().map(|m| Turn {
-                        role: m.role.clone(),
-                        content: m.content.clone(),
-                    }).collect(),
-                })
-                .collect();
+        for tc in &test_cases {
+            for item in &tc.evidence_items {
+                let sessions: Vec<ConversationSession> = item.conversations.iter()
+                    .enumerate()
+                    .map(|(i, conv)| ConversationSession {
+                        id: format!("conv_{i}"),
+                        date: None,
+                        turns: conv.messages.iter().map(|m| Turn {
+                            role: if m.speaker == "user" { "user".to_string() } else { "assistant".to_string() },
+                            content: m.text.clone(),
+                        }).collect(),
+                    })
+                    .collect();
 
-            BenchmarkQuestion {
-                id: entry.id,
-                question_type: if entry.question_type.is_empty() { "general".to_string() } else { entry.question_type },
-                question: entry.question,
-                ground_truth,
-                question_date: None,
-                sessions,
-                is_abstention: false,
-                metadata: std::collections::HashMap::new(),
+                questions.push(BenchmarkQuestion {
+                    id: format!("convomem_{category}_{qi}"),
+                    question_type: category.to_string(),
+                    question: item.question.clone(),
+                    ground_truth: vec![item.answer.clone()],
+                    question_date: None,
+                    sessions,
+                    is_abstention: category == "abstention",
+                    metadata: std::collections::HashMap::new(),
+                });
+                qi += 1;
             }
-        }).collect();
+        }
 
-        Ok(Self { questions })
+        Ok(Self { questions, category: category.to_string() })
     }
 }
 
 impl BenchmarkDataset for ConvoMemDataset {
     fn name(&self) -> &str { "convomem" }
-    fn variant(&self) -> &str { "default" }
-    fn description(&self) -> &str { "ConvoMem — conversational memory evaluation (memorybench)" }
+    fn variant(&self) -> &str { &self.category }
+    fn description(&self) -> &str { "ConvoMem (Salesforce) — conversational memory evaluation with 6 evidence categories" }
     fn questions(&self) -> &[BenchmarkQuestion] { &self.questions }
     fn question_types(&self) -> Vec<String> {
         let mut types: Vec<String> = self.questions.iter()
@@ -94,19 +127,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_convomem() {
+    fn parse_convomem_format() {
         let json = r#"[{
-            "id": "q1",
-            "question": "What is the user's name?",
-            "answer": "John",
-            "type": "recall",
-            "conversations": [[
-                {"role": "user", "content": "My name is John"},
-                {"role": "assistant", "content": "Nice to meet you, John!"}
-            ]]
+            "evidenceItems": [{
+                "question": "What trivia category did my team lose on?",
+                "answer": "1980s one-hit wonders",
+                "message_evidences": [{"speaker": "user", "text": "We lost on 1980s one-hit wonders"}],
+                "conversations": [{
+                    "messages": [
+                        {"speaker": "user", "text": "Hey, trivia night was rough"},
+                        {"speaker": "assistant", "text": "Oh no, what happened?"}
+                    ]
+                }]
+            }]
         }]"#;
-        let ds = ConvoMemDataset::from_json(json).unwrap();
+        let ds = ConvoMemDataset::from_json("user_evidence", json).unwrap();
         assert_eq!(ds.questions().len(), 1);
-        assert_eq!(ds.questions()[0].ground_truth, vec!["John"]);
+        assert_eq!(ds.questions()[0].question_type, "user_evidence");
+        assert!(!ds.questions()[0].is_abstention);
+    }
+
+    #[test]
+    fn abstention_category() {
+        let json = r#"[{"evidenceItems": [{"question": "Q?", "answer": "A", "conversations": []}]}]"#;
+        let ds = ConvoMemDataset::from_json("abstention", json).unwrap();
+        assert!(ds.questions()[0].is_abstention);
     }
 }
