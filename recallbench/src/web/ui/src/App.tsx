@@ -344,9 +344,9 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
             <div class="mb-6">
               <div class="flex justify-between items-baseline mb-1">
                 <span class="text-sm text-base-content/60">
-                  Progress: {correct} correct of {total} evaluated
+                  Progress: {correct} correct of {total} evaluated — {(pct * 100).toFixed(1)}% accuracy
                 </span>
-                <span class={`text-lg font-bold ${accClass()}`}>{(pct * 100).toFixed(1)}%</span>
+                <span class="text-sm text-base-content/40">{total - correct} failures</span>
               </div>
               <div class="w-full bg-base-300 rounded-full h-2.5">
                 <div
