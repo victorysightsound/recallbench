@@ -262,13 +262,11 @@ async fn main() -> Result<()> {
             cmd_run(
                 system_name, system_config.as_deref(),
                 &dataset, &variant, conc, bgt,
-                gen_m, jdg, &out, filter_types, resume, qsize,
+                gen_m, jdg, &out, filter_types, resume, qsize, &cfg,
             ).await
         }
-        Commands::Compare { systems, dataset, variant, output } => {
-            println!("Compare: {systems} on {dataset}/{variant}");
-            println!("(Not yet implemented — use 'run' for individual systems)");
-            Ok(())
+        Commands::Compare { systems, dataset, variant, output: _ } => {
+            cmd_compare(&systems, &dataset, &variant, &cfg).await
         }
         Commands::Calibrate { judge_model, dataset } => {
             println!("Calibrate: {judge_model} on {dataset}");
@@ -474,6 +472,7 @@ async fn cmd_run(
     filter_types: Option<Vec<String>>,
     do_resume: bool,
     quick_size: Option<usize>,
+    cfg: &config::Config,
 ) -> Result<()> {
     // Create output directory
     if let Some(parent) = output.parent() {
@@ -500,19 +499,9 @@ async fn cmd_run(
         }
     };
 
-    // Create LLM clients
-    let gen_llm: Arc<dyn traits::LLMClient> = Arc::new(
-        llm::cli::CliLLMClient::new(
-            &llm::LLMRegistry::resolve_provider(gen_model).0,
-            gen_model,
-        ),
-    );
-    let judge_llm: Arc<dyn traits::LLMClient> = Arc::new(
-        llm::cli::CliLLMClient::new(
-            &llm::LLMRegistry::resolve_provider(judge_model).0,
-            judge_model,
-        ),
-    );
+    // Create LLM clients (resolves custom/local endpoints from config)
+    let gen_llm = create_llm_client(gen_model, &cfg)?;
+    let judge_llm = create_llm_client(judge_model, &cfg)?;
 
     // Run benchmark
     let run_config = runner::RunConfig {
@@ -550,6 +539,107 @@ async fn cmd_run(
         println!("\n{report_output}");
         println!("{}", report::table::render_latency_table(&[(system.name(), &lat)]));
         println!("{}", report::table::render_cost_table(&[(system.name(), &cost)]));
+    }
+
+    Ok(())
+}
+
+/// Create an LLM client from a model string, resolving custom/local endpoints from config.
+fn create_llm_client(model: &str, cfg: &config::Config) -> Result<Arc<dyn traits::LLMClient>> {
+    // Check for custom endpoint names first
+    match model {
+        "custom" => {
+            if let Some(ref ep) = cfg.llm.custom {
+                let client = llm::compatible::CompatibleClient::from_config("custom", ep)?;
+                return Ok(Arc::new(client));
+            }
+            anyhow::bail!("No [llm.custom] section in recallbench.toml");
+        }
+        "local" => {
+            if let Some(ref ep) = cfg.llm.local {
+                let client = llm::compatible::CompatibleClient::from_config("local", ep)?;
+                return Ok(Arc::new(client));
+            }
+            anyhow::bail!("No [llm.local] section in recallbench.toml");
+        }
+        _ => {
+            // Default: use CLI adapter
+            let (provider, _) = llm::LLMRegistry::resolve_provider(model);
+            Ok(Arc::new(llm::cli::CliLLMClient::new(provider, model)))
+        }
+    }
+}
+
+async fn cmd_compare(
+    systems_str: &str,
+    dataset: &str,
+    variant: &str,
+    cfg: &config::Config,
+) -> Result<()> {
+    let system_names: Vec<&str> = systems_str.split(',').map(|s| s.trim()).collect();
+    if system_names.is_empty() {
+        anyhow::bail!("No systems specified. Use --systems system1,system2");
+    }
+
+    let registry = datasets::DatasetRegistry::new();
+    let ds = registry.load(dataset, variant, false).await?;
+
+    let gen_model = &cfg.defaults.gen_model;
+    let judge_model = &cfg.defaults.judge_model;
+    let gen_llm: Arc<dyn traits::LLMClient> = Arc::new(
+        llm::cli::CliLLMClient::new(&llm::LLMRegistry::resolve_provider(gen_model).0, gen_model),
+    );
+    let judge_llm: Arc<dyn traits::LLMClient> = Arc::new(
+        llm::cli::CliLLMClient::new(&llm::LLMRegistry::resolve_provider(judge_model).0, judge_model),
+    );
+
+    let mut all_acc: Vec<(String, metrics::AccuracyMetrics)> = Vec::new();
+    let mut all_lat: Vec<(String, metrics::LatencyMetrics)> = Vec::new();
+    let mut all_cost: Vec<(String, metrics::CostMetrics)> = Vec::new();
+
+    for sys_name in &system_names {
+        let system: Box<dyn traits::MemorySystem> = match *sys_name {
+            "echo" => Box::new(systems::echo::EchoSystem::new()),
+            _ => {
+                tracing::warn!("Unknown system '{sys_name}', skipping.");
+                continue;
+            }
+        };
+
+        let output_dir = PathBuf::from(&cfg.defaults.output_dir);
+        std::fs::create_dir_all(&output_dir)?;
+        let output_path = output_dir.join(format!("{sys_name}-{dataset}-{variant}.jsonl"));
+
+        let run_config = runner::RunConfig {
+            concurrency: cfg.defaults.concurrency,
+            token_budget: cfg.defaults.token_budget,
+            output_path,
+            filter_types: None,
+            resume: false,
+            quick_size: None,
+        };
+
+        println!("\nBenchmarking {sys_name} ...");
+        let results = runner::run_benchmark(
+            system.as_ref(), ds.as_ref(),
+            gen_llm.clone(), judge_llm.clone(), &run_config,
+        ).await?;
+
+        if !results.is_empty() {
+            all_acc.push((sys_name.to_string(), metrics::compute_accuracy(&results)));
+            all_lat.push((sys_name.to_string(), metrics::compute_latency(&results)));
+            all_cost.push((sys_name.to_string(), metrics::compute_cost(&results, &metrics::Pricing::default())));
+        }
+    }
+
+    if !all_acc.is_empty() {
+        let acc_refs: Vec<(&str, &metrics::AccuracyMetrics)> = all_acc.iter().map(|(n, a)| (n.as_str(), a)).collect();
+        let lat_refs: Vec<(&str, &metrics::LatencyMetrics)> = all_lat.iter().map(|(n, l)| (n.as_str(), l)).collect();
+        let cost_refs: Vec<(&str, &metrics::CostMetrics)> = all_cost.iter().map(|(n, c)| (n.as_str(), c)).collect();
+
+        println!("\n{}", report::table::render_accuracy_table(&acc_refs, dataset, variant));
+        println!("{}", report::table::render_latency_table(&lat_refs));
+        println!("{}", report::table::render_cost_table(&cost_refs));
     }
 
     Ok(())
