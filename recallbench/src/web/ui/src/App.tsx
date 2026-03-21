@@ -300,19 +300,65 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
     return overall >= 0.9 ? "text-success" : overall >= 0.7 ? "text-warning" : "text-error";
   };
 
+  const [questionsOpen, setQuestionsOpen] = createSignal(false);
+  const [pageSize, setPageSize] = createSignal(10);
+  const [page, setPage] = createSignal(0);
+
+  const pagedQuestions = () => {
+    const filtered = filteredQuestions();
+    const start = page() * pageSize();
+    return filtered.slice(start, start + pageSize());
+  };
+
+  const totalPages = () => Math.ceil(filteredQuestions().length / pageSize());
+
+  // Build per-type counts from questions signal for progress bars
+  const perTypeCounts = () => {
+    const counts: Record<string, { correct: number; total: number }> = {};
+    for (const q of questions()) {
+      if (!counts[q.question_type]) counts[q.question_type] = { correct: 0, total: 0 };
+      counts[q.question_type].total++;
+      if (q.is_correct) counts[q.question_type].correct++;
+    }
+    return Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0]));
+  };
+
   return (
     <div>
       {/* Breadcrumb */}
       <div class="breadcrumbs text-sm mb-4">
         <ul>
-          <li>
-            <a class="cursor-pointer" onClick={props.onBack}>Dashboard</a>
-          </li>
-          <li>{props.runId}</li>
+          <li><a class="cursor-pointer" onClick={props.onBack}>Dashboard</a></li>
+          <li>{humanizeName(props.runId)}</li>
         </ul>
       </div>
 
-      <h2 class="text-2xl font-bold mb-4">{props.runId}</h2>
+      <h2 class="text-2xl font-bold mb-2">{humanizeName(props.runId)}</h2>
+
+      {/* Overall progress bar */}
+      <Show when={metrics()}>
+        {(m) => {
+          const total = m().accuracy.total_questions;
+          const correct = m().accuracy.total_correct;
+          const pct = total > 0 ? correct / total : 0;
+          return (
+            <div class="mb-6">
+              <div class="flex justify-between items-baseline mb-1">
+                <span class="text-sm text-base-content/60">
+                  Progress: {correct} correct of {total} evaluated
+                </span>
+                <span class={`text-lg font-bold ${accClass()}`}>{(pct * 100).toFixed(1)}%</span>
+              </div>
+              <div class="w-full bg-base-300 rounded-full h-2.5">
+                <div
+                  class={`h-2.5 rounded-full transition-all ${pct >= 0.9 ? 'bg-success' : pct >= 0.7 ? 'bg-warning' : 'bg-error'}`}
+                  style={{ width: `${Math.round(pct * 100)}%` }}
+                ></div>
+              </div>
+            </div>
+          );
+        }}
+      </Show>
 
       <Show when={metrics()}>
         {(m) => (
@@ -321,93 +367,139 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
               <StatCard label="Task-Averaged" value={`${(m().accuracy.task_averaged * 100).toFixed(1)}%`} class={accClass()} />
               <StatCard label="Overall" value={`${(m().accuracy.overall * 100).toFixed(1)}%`} class={accClass()} />
-              <StatCard label="Questions" value={`${m().accuracy.total_questions}`} />
+              <StatCard label="Evaluated" value={`${m().accuracy.total_questions}`} />
               <StatCard label="Correct" value={`${m().accuracy.total_correct}`} class="text-success" />
               <StatCard label="Retrieval p50" value={`${m().latency.retrieval_p50.toFixed(0)}ms`} />
               <StatCard label="Est. Cost" value={`$${m().cost.estimated_usd.toFixed(2)}`} />
             </div>
-
-            {/* Per-Type Table */}
-            <Show when={Object.keys(m().accuracy.per_type).length > 0}>
-              <div class="overflow-x-auto mb-6">
-                <table class="table table-sm table-zebra">
-                  <thead>
-                    <tr><th>Question Type</th><th>Accuracy</th></tr>
-                  </thead>
-                  <tbody>
-                    <For each={Object.entries(m().accuracy.per_type).sort((a, b) => a[0].localeCompare(b[0]))}>
-                      {([type, acc]) => (
-                        <tr>
-                          <td>{type}</td>
-                          <td><AccuracyBadge value={acc} /></td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-              </div>
-            </Show>
           </>
         )}
       </Show>
 
-      {/* Questions */}
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-lg font-semibold">Questions</h3>
-        <div class="flex gap-3 items-center">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text text-sm">Failures only</span>
-            <input
-              type="checkbox"
-              class="toggle toggle-sm toggle-error"
-              checked={failOnly()}
-              onChange={(e) => setFailOnly(e.target.checked)}
-            />
-          </label>
-          <select
-            class="select select-sm select-bordered"
-            value={typeFilter()}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="">All types</option>
-            <For each={questionTypes()}>
-              {(t) => <option value={t}>{t}</option>}
-            </For>
-          </select>
+      {/* Per-Type Breakdown with progress bars */}
+      <Show when={perTypeCounts().length > 0}>
+        <h3 class="text-lg font-semibold mb-3">Per-Type Accuracy</h3>
+        <div class="space-y-2 mb-6">
+          <For each={perTypeCounts()}>
+            {([type, { correct, total }]) => {
+              const pct = total > 0 ? correct / total : 0;
+              const cls = pct >= 0.95 ? "text-success" : pct >= 0.85 ? "text-warning" : "text-error";
+              return (
+                <div>
+                  <div class="flex justify-between text-sm mb-1">
+                    <span>{type}</span>
+                    <span class={cls}>{correct}/{total} ({(pct * 100).toFixed(1)}%)</span>
+                  </div>
+                  <div class="w-full bg-base-300 rounded-full h-2">
+                    <div
+                      class={`h-2 rounded-full ${pct >= 0.95 ? 'bg-success' : pct >= 0.85 ? 'bg-warning' : 'bg-error'}`}
+                      style={{ width: `${Math.round(pct * 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            }}
+          </For>
         </div>
+      </Show>
+
+      {/* Questions — collapsible */}
+      <div
+        class="flex items-center justify-between cursor-pointer py-2"
+        onClick={() => setQuestionsOpen(!questionsOpen())}
+      >
+        <h3 class="text-lg font-semibold">
+          Questions ({filteredQuestions().length})
+          <span class="text-sm font-normal text-base-content/40 ml-2">{questionsOpen() ? "▲" : "▼"}</span>
+        </h3>
+        <Show when={questionsOpen()}>
+          <div class="flex gap-3 items-center" onClick={(e: MouseEvent) => e.stopPropagation()}>
+            <label class="label cursor-pointer gap-2">
+              <span class="label-text text-sm">Failures only</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm toggle-error"
+                checked={failOnly()}
+                onChange={(e) => setFailOnly(e.target.checked)}
+              />
+            </label>
+            <select
+              class="select select-sm select-bordered"
+              value={typeFilter()}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="">All types</option>
+              <For each={questionTypes()}>
+                {(t) => <option value={t}>{t}</option>}
+              </For>
+            </select>
+            <select
+              class="select select-sm select-bordered w-20"
+              value={pageSize()}
+              onChange={(e) => { setPageSize(parseInt(e.target.value)); setPage(0); }}
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="500">All</option>
+            </select>
+          </div>
+        </Show>
       </div>
 
-      <Show when={questions().length > 0} fallback={<div class="skeleton h-48 w-full" />}>
-        <div class="overflow-x-auto">
-          <table class="table table-zebra table-sm">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Type</th>
-                <th>Correct</th>
-                <th>Ground Truth</th>
-                <th>Hypothesis</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={filteredQuestions()}>
-                {(q) => (
-                  <tr>
-                    <td class="font-mono text-xs">{q.question_id}</td>
-                    <td><span class="badge badge-ghost badge-sm">{q.question_type}</span></td>
-                    <td>
-                      {q.is_correct
-                        ? <span class="badge badge-success badge-sm">Pass</span>
-                        : <span class="badge badge-error badge-sm">Fail</span>}
-                    </td>
-                    <td class="max-w-xs truncate">{q.ground_truth}</td>
-                    <td class="max-w-xs truncate">{q.hypothesis}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
+      <Show when={questionsOpen()}>
+        <Show when={questions().length > 0} fallback={<div class="skeleton h-24 w-full" />}>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra table-sm">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <th>Correct</th>
+                  <th>Ground Truth</th>
+                  <th>Hypothesis</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={pagedQuestions()}>
+                  {(q) => (
+                    <tr>
+                      <td class="font-mono text-xs">{q.question_id}</td>
+                      <td><span class="badge badge-ghost badge-sm">{q.question_type}</span></td>
+                      <td>
+                        {q.is_correct
+                          ? <span class="badge badge-success badge-sm">Pass</span>
+                          : <span class="badge badge-error badge-sm">Fail</span>}
+                      </td>
+                      <td class="max-w-xs truncate">{q.ground_truth}</td>
+                      <td class="max-w-xs truncate">{q.hypothesis}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <Show when={totalPages() > 1}>
+            <div class="flex justify-center items-center gap-2 mt-4">
+              <button
+                class="btn btn-sm btn-ghost"
+                disabled={page() === 0}
+                onClick={() => setPage(page() - 1)}
+              >Previous</button>
+              <span class="text-sm text-base-content/60">
+                Page {page() + 1} of {totalPages()}
+              </span>
+              <button
+                class="btn btn-sm btn-ghost"
+                disabled={page() >= totalPages() - 1}
+                onClick={() => setPage(page() + 1)}
+              >Next</button>
+            </div>
+          </Show>
+        </Show>
       </Show>
     </div>
   );
