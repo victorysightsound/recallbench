@@ -101,6 +101,12 @@ enum Commands {
         /// Number of questions in quick mode subset
         #[arg(long)]
         quick_size: Option<usize>,
+        /// Stress test: run N times and report variance
+        #[arg(long)]
+        stress: Option<usize>,
+        /// Budget sweep: run at multiple token budgets
+        #[arg(long)]
+        budget_sweep: bool,
     },
 
     /// Compare multiple systems
@@ -240,7 +246,7 @@ async fn main() -> Result<()> {
             system, system_config, dataset, variant,
             concurrency, budget, gen_model, judge_model,
             output, seed: _seed, filter, resume,
-            quick, quick_size,
+            quick, quick_size, stress, budget_sweep,
         } => {
             let system_name = system.as_deref().unwrap_or("echo");
             let gen_m = gen_model.as_deref().unwrap_or(&cfg.defaults.gen_model);
@@ -260,19 +266,29 @@ async fn main() -> Result<()> {
                 None
             };
 
-            cmd_run(
-                system_name, system_config.as_deref(),
-                &dataset, &variant, conc, bgt,
-                gen_m, jdg, &out, filter_types, resume, qsize, &cfg,
-            ).await
+            if let Some(n) = stress {
+                cmd_stress(
+                    system_name, &dataset, &variant, conc, bgt,
+                    gen_m, jdg, &out, qsize, n, &cfg,
+                ).await
+            } else if budget_sweep {
+                cmd_budget_sweep(
+                    system_name, &dataset, &variant, conc,
+                    gen_m, jdg, &out, qsize, &cfg,
+                ).await
+            } else {
+                cmd_run(
+                    system_name, system_config.as_deref(),
+                    &dataset, &variant, conc, bgt,
+                    gen_m, jdg, &out, filter_types, resume, qsize, &cfg,
+                ).await
+            }
         }
         Commands::Compare { systems, dataset, variant, output: _ } => {
             cmd_compare(&systems, &dataset, &variant, &cfg).await
         }
-        Commands::Calibrate { judge_model, dataset } => {
-            println!("Calibrate: {judge_model} on {dataset}");
-            println!("(Calibration data not yet bundled)");
-            Ok(())
+        Commands::Calibrate { judge_model, dataset: _ } => {
+            cmd_calibrate(&judge_model, &cfg).await
         }
         Commands::Longevity {
             system, sessions, checkpoints, eval_questions,
@@ -569,6 +585,156 @@ fn create_llm_client(model: &str, cfg: &config::Config) -> Result<Arc<dyn traits
             Ok(Arc::new(llm::cli::CliLLMClient::new(provider, model)))
         }
     }
+}
+
+async fn cmd_stress(
+    system_name: &str,
+    dataset: &str,
+    variant: &str,
+    concurrency: usize,
+    budget: usize,
+    gen_model: &str,
+    judge_model: &str,
+    output: &std::path::Path,
+    quick_size: Option<usize>,
+    runs: usize,
+    cfg: &config::Config,
+) -> Result<()> {
+    println!("Stress test: {runs} runs of {dataset}/{variant} on {system_name}\n");
+
+    let registry = datasets::DatasetRegistry::new();
+    let ds = registry.load(dataset, variant, false).await?;
+
+    let system: Box<dyn traits::MemorySystem> = match system_name {
+        "echo" => Box::new(systems::echo::EchoSystem::new()),
+        _ => anyhow::bail!("Unknown system: {system_name}"),
+    };
+
+    let gen_llm = create_llm_client(gen_model, cfg)?;
+    let judge_llm = create_llm_client(judge_model, cfg)?;
+
+    let mut accuracies = Vec::new();
+
+    for i in 0..runs {
+        let run_output = output.with_extension(format!("run{i}.jsonl"));
+        let run_config = runner::RunConfig {
+            concurrency,
+            token_budget: budget,
+            output_path: run_output,
+            filter_types: None,
+            resume: false,
+            quick_size,
+        };
+
+        let results = runner::run_benchmark(
+            system.as_ref(), ds.as_ref(),
+            gen_llm.clone(), judge_llm.clone(), &run_config,
+        ).await?;
+
+        let acc = metrics::compute_accuracy(&results);
+        println!("  Run {}: {:.1}% ({}/{})", i + 1, acc.overall * 100.0, acc.total_correct, acc.total_questions);
+        accuracies.push(acc.overall);
+    }
+
+    let mean = accuracies.iter().sum::<f64>() / accuracies.len() as f64;
+    let variance = accuracies.iter().map(|a| (a - mean).powi(2)).sum::<f64>() / accuracies.len() as f64;
+    let stddev = variance.sqrt();
+
+    println!("\nStress Test Summary ({runs} runs):");
+    println!("  Mean accuracy:  {:.1}%", mean * 100.0);
+    println!("  Std deviation:  {:.2}%", stddev * 100.0);
+    println!("  Variance:       {:.4}", variance);
+    println!("  Min:            {:.1}%", accuracies.iter().cloned().fold(f64::INFINITY, f64::min) * 100.0);
+    println!("  Max:            {:.1}%", accuracies.iter().cloned().fold(f64::NEG_INFINITY, f64::max) * 100.0);
+
+    Ok(())
+}
+
+async fn cmd_budget_sweep(
+    system_name: &str,
+    dataset: &str,
+    variant: &str,
+    concurrency: usize,
+    gen_model: &str,
+    judge_model: &str,
+    output: &std::path::Path,
+    quick_size: Option<usize>,
+    cfg: &config::Config,
+) -> Result<()> {
+    let budgets = [4096, 8192, 16384, 32768];
+    println!("Budget sweep: {} budgets on {dataset}/{variant}\n", budgets.len());
+
+    let registry = datasets::DatasetRegistry::new();
+    let ds = registry.load(dataset, variant, false).await?;
+
+    let system: Box<dyn traits::MemorySystem> = match system_name {
+        "echo" => Box::new(systems::echo::EchoSystem::new()),
+        _ => anyhow::bail!("Unknown system: {system_name}"),
+    };
+
+    let gen_llm = create_llm_client(gen_model, cfg)?;
+    let judge_llm = create_llm_client(judge_model, cfg)?;
+
+    let mut results_table = Vec::new();
+
+    for budget in &budgets {
+        let run_output = output.with_extension(format!("budget{budget}.jsonl"));
+        let run_config = runner::RunConfig {
+            concurrency,
+            token_budget: *budget,
+            output_path: run_output,
+            filter_types: None,
+            resume: false,
+            quick_size,
+        };
+
+        let results = runner::run_benchmark(
+            system.as_ref(), ds.as_ref(),
+            gen_llm.clone(), judge_llm.clone(), &run_config,
+        ).await?;
+
+        let acc = metrics::compute_accuracy(&results);
+        results_table.push((*budget, acc.overall, acc.total_correct, acc.total_questions));
+    }
+
+    println!("\nBudget Sweep Results:");
+    println!("  {:<12} {:<12} {:<10}", "Budget", "Accuracy", "Correct");
+    println!("  {}", "-".repeat(34));
+    for (budget, accuracy, correct, total) in &results_table {
+        println!("  {:<12} {:<12} {}/{}", budget, format!("{:.1}%", accuracy * 100.0), correct, total);
+    }
+
+    Ok(())
+}
+
+async fn cmd_calibrate(judge_model: &str, cfg: &config::Config) -> Result<()> {
+    const CALIBRATION_JSON: &str = include_str!("../../calibration/longmemeval_50.json");
+    let pairs = judge::calibration::load_calibration_pairs(CALIBRATION_JSON)?;
+    println!("Running calibration with {} pairs against {judge_model}...\n", pairs.len());
+
+    let judge_llm = create_llm_client(judge_model, cfg)?;
+    let result = judge::calibration::run_calibration(&pairs, judge_llm.as_ref()).await?;
+
+    println!("Calibration Results:");
+    println!("  Total pairs: {}", result.total);
+    println!("  Correct:     {}", result.correct);
+    println!("  Accuracy:    {:.1}%", result.accuracy * 100.0);
+
+    if !result.mismatches.is_empty() {
+        println!("\nMismatches:");
+        for m in &result.mismatches {
+            let dir = if m.expected { "expected YES got NO" } else { "expected NO got YES" };
+            println!("  [{}] {} — {}", m.index, m.question, dir);
+        }
+    }
+
+    if result.accuracy >= 0.9 {
+        println!("\nCalibration PASSED (>= 90%)");
+    } else {
+        println!("\nCalibration FAILED (< 90%). Judge may produce unreliable results.");
+    }
+
+    Ok(())
 }
 
 async fn cmd_compare(
