@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 (2026-03-21)
+
+All dataset parsers rewritten against real schemas and validated with actual downloaded data.
+
+### Added
+- Download support for LoCoMo, ConvoMem (Salesforce), MemBench, HaluMem — all auto-download via `recallbench download`
+- Category aliases: `--dataset recall` (LongMemEval), `--dataset longturn` (LoCoMo), `--dataset conversation` (ConvoMem), `--dataset multiaspect` (MemBench), `--dataset hallucination` (HaluMem)
+- MemBench variants: simple, aggregative, comparative, conditional, knowledge_update, highlevel
+- ConvoMem variants: user_evidence, assistant_facts, changing, abstention, preference, implicit_connection
+- HaluMem variants: medium (33MB), long (107MB)
+
+### Fixed
+- LoCoMo parser rewritten for real schema (session_N keys, speaker names, integer answers, missing answer fields)
+- ConvoMem parser rewritten for Salesforce evidenceItems format with 6 evidence categories
+- MemBench parser rewritten for roles/message_list/QA multiple-choice format
+- HaluMem parser rewritten for JSONL format with uuid, persona_info, sessions, memory_points, questions
+- MemoryAgentBench documented as Parquet-only with export instructions
+
+### Validated
+- LoCoMo: 1,986 QA pairs, 5 categories (single-hop, temporal, multi-hop, open-domain, unanswerable)
+- ConvoMem: 413+ questions per category, 6 categories
+- MemBench: 500 questions per category, multiple-choice with ground_truth resolution
+- HaluMem Medium: 3,467 QA pairs, 6 question types across 20 users
+
 ## 0.2.0 (2026-03-20)
 
 Production-ready release. All alpha gaps resolved.
