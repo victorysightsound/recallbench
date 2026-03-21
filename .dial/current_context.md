@@ -1,4 +1,4 @@
-# Task: Phase 1.3: Trait definitions — implement traits.rs: MemorySystem, LLMClient, BenchmarkDataset async traits with full documentation
+# Task: GAP P1.1: Implement compare subcommand — run multiple systems sequentially against same dataset, collect per-system results, output comparative tables, support --format and --quick
 
 ## ⚠️ SIGNS (Critical Rules)
 
@@ -27,3 +27,5 @@
 - [other] MindCore crate is at ~/projects/mindcore and builds successfully. Link via path dependency: mindcore = { path = "../mindcore" }
 
 - [other] The mindcore-bench harness (~/projects/mindcore/mindcore-bench/) is the reference implementation. Port patterns from there but generalize for multi-system support.
+
+- [other] Gap fix round: 19 tasks (102-120) to resolve all alpha gaps. Phase 1=critical stubs, Phase 2=named adapters, Phase 3=missing features, Phase 4=dataset validation, Phase 5=integration tests, Phase 6=error hardening, Phase 7=web UI polish, Phase 8=smoke test and publish.
