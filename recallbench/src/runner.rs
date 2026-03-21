@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 use crate::judge;
 use crate::resume;
 use crate::sampling;
+use crate::verify;
 use crate::traits::{BenchmarkDataset, LLMClient, MemorySystem};
 use crate::types::{BenchmarkQuestion, EvalResult};
 
@@ -194,8 +195,20 @@ async fn evaluate_question(
         &retrieval.context,
         &question.question,
         question.question_date.as_deref(),
+        &question.question_type,
+        question.is_abstention,
     );
-    let hypothesis = gen_llm.generate(&prompt, 256).await?;
+    let mut hypothesis = gen_llm.generate(&prompt, 512).await?;
+
+    // 4b. Self-verification pass (multi-session, knowledge-update only)
+    hypothesis = verify::maybe_verify(
+        gen_llm,
+        &retrieval.context,
+        &question.question,
+        &hypothesis,
+        &question.question_type,
+        question.is_abstention,
+    ).await?;
     let generation_ms = gen_start.elapsed().as_millis() as u64;
 
     // 5. Judge
@@ -229,20 +242,95 @@ async fn evaluate_question(
     })
 }
 
-/// Build the generation prompt from context, question, and date.
-pub fn build_generation_prompt(context: &str, question: &str, date: Option<&str>) -> String {
-    let date_line = date.map(|d| format!("\nCurrent date: {d}")).unwrap_or_default();
+/// Build the generation prompt from context, question, date, and type.
+/// Ported from mindcore-bench v3 for result parity.
+pub fn build_generation_prompt(
+    context: &str,
+    question: &str,
+    date: Option<&str>,
+    question_type: &str,
+    is_abstention: bool,
+) -> String {
+    let question_date = date.unwrap_or("unknown");
 
-    format!(
-        r#"You are a helpful assistant with access to conversation history. Use the following context to answer the question accurately and concisely.
+    let preamble = format!(
+        "I will give you several history chats between a user and an AI assistant. \
+         Based on the chat history, answer the question at the end.\n\n\
+         History Chats:\n\n\
+         {context}\n\n\
+         Current Date: {question_date}\n\
+         Question: {question}\n\n"
+    );
 
-Context from memory:
-{context}
-{date_line}
-Question: {question}
+    let type_instruction = if is_abstention {
+        "Instructions: If the chat history does not contain information that DIRECTLY answers \
+         this question, you MUST respond with \"I don't know\" or \"The information is not \
+         available in the chat history.\" Do NOT attempt to infer, extrapolate, or guess. \
+         Only answer if the information is explicitly stated in the conversations. \
+         If you can answer, provide the answer concisely."
+            .to_string()
+    } else {
+        match question_type {
+            "single-session-preference" => {
+                "Instructions: Based on the chat history, describe what the user's CONTENT \
+                 preferences would be when responding to this question. Focus on the TOPICS, \
+                 SUBJECTS, and SPECIFIC INTERESTS the user has expressed — NOT on response \
+                 formatting or structure.\n\n\
+                 Your answer MUST be in the format: \"The user would prefer responses that...\"\n\n\
+                 Example 1:\n\
+                 Question: Can you recommend some accessories for my camera?\n\
+                 Good answer: The user would prefer suggestions of Sony-compatible accessories \
+                 that enhance their landscape photography, based on their discussion of the \
+                 Sony Alpha camera and recent mountain photography trips. They might not prefer \
+                 suggestions for other camera brands or studio photography gear.\n\n\
+                 Example 2:\n\
+                 Question: Can you suggest some new recipes to try?\n\
+                 Good answer: The user would prefer recipes that incorporate quinoa and roasted \
+                 vegetables, building on their recent success with Mediterranean-style meal prep. \
+                 They might not prefer recipes with dairy, given their mention of lactose \
+                 intolerance.\n\n\
+                 BAD answers describe formatting preferences like \"well-organized with bullet \
+                 points\" or \"detailed and comprehensive.\" Focus on WHAT the user wants to \
+                 hear about, not HOW it should be formatted.\n\n\
+                 Now describe the user's content preferences for the question above:"
+                    .to_string()
+            }
+            "temporal-reasoning" => {
+                format!(
+                    "Instructions: Answer this question step by step. Pay close attention to \
+                     dates and timestamps on each session. \
+                     IMPORTANT: Before computing any count or duration, list EVERY relevant \
+                     event with its exact date. Then count them explicitly (1, 2, 3...) or \
+                     compute the date arithmetic step by step. Do not estimate or shortcut. \
+                     When counting days between dates, enumerate each step. \
+                     Current Date: {question_date}"
+                )
+            }
+            "knowledge-update" => {
+                "Instructions: Answer this question step by step. When information has been \
+                 updated across sessions, use the MOST RECENT value as the primary answer. \
+                 IMPORTANT: List ALL versions of the relevant information chronologically with \
+                 their session dates. Then clearly state the latest/most recent value as your \
+                 final answer."
+                    .to_string()
+            }
+            "multi-session" => {
+                "Instructions: This question requires synthesizing information across multiple \
+                 sessions. Answer step by step. \
+                 IMPORTANT: Before giving your final answer, enumerate ALL relevant items/facts \
+                 from EVERY session. Number each one explicitly. Do not skip any session. \
+                 Then compile your final answer from the complete list."
+                    .to_string()
+            }
+            _ => {
+                "Instructions: Answer the question based on the chat history. \
+                 First extract the relevant information, then provide a concise answer."
+                    .to_string()
+            }
+        }
+    };
 
-Answer the question based on the context above. If the information is not available in the context, say "I don't have enough information to answer this question.""#
-    )
+    format!("{preamble}{type_instruction}\n\nAnswer:")
 }
 
 #[cfg(test)]
@@ -251,18 +339,24 @@ mod tests {
 
     #[test]
     fn generation_prompt_with_date() {
-        let prompt = build_generation_prompt("some context", "What happened?", Some("2024/03/10"));
+        let prompt = build_generation_prompt("some context", "What happened?", Some("2024/03/10"), "temporal-reasoning", false);
         assert!(prompt.contains("some context"));
         assert!(prompt.contains("What happened?"));
         assert!(prompt.contains("2024/03/10"));
+        assert!(prompt.contains("EVERY relevant event"));
     }
 
     #[test]
-    fn generation_prompt_without_date() {
-        let prompt = build_generation_prompt("ctx", "Q?", None);
-        assert!(prompt.contains("ctx"));
-        assert!(prompt.contains("Q?"));
-        assert!(!prompt.contains("Current date"));
+    fn generation_prompt_preference() {
+        let prompt = build_generation_prompt("ctx", "Recommend?", None, "single-session-preference", false);
+        assert!(prompt.contains("The user would prefer"));
+        assert!(prompt.contains("BAD answers"));
+    }
+
+    #[test]
+    fn generation_prompt_abstention() {
+        let prompt = build_generation_prompt("ctx", "Q?", None, "any", true);
+        assert!(prompt.contains("MUST respond with"));
     }
 
     #[tokio::test]

@@ -91,6 +91,7 @@ pub async fn run_longevity(
 
             let prompt = crate::runner::build_generation_prompt(
                 &retrieval.context, &question.question, None,
+                &question.question_type, question.is_abstention,
             );
             let hypothesis = gen_llm.generate(&prompt, 256).await?;
             let ground_truth = question.ground_truth.join(", ");

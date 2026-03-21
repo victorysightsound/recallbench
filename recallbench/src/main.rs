@@ -14,8 +14,9 @@ mod runner;
 mod sampling;
 mod systems;
 mod traits;
-mod web;
 mod types;
+mod verify;
+mod web;
 
 use std::path::PathBuf;
 use std::sync::Arc;
