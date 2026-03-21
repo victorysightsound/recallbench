@@ -160,18 +160,25 @@ const StatCard: Component<{ label: string; value: string; class?: string }> = (p
 );
 
 const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
-  const [runs, { refetch }] = createResource(fetchRuns);
+  const [runs, setRuns] = createSignal<RunSummary[]>([]);
+  const [loaded, setLoaded] = createSignal(false);
 
-  // Auto-refresh every 5 seconds for live progress
-  const interval = setInterval(() => refetch(), 5000);
+  // Initial fetch + auto-refresh every 5 seconds with granular signal updates
+  const refresh = async () => {
+    const data = await fetchRuns();
+    setRuns(data);
+    setLoaded(true);
+  };
+  refresh();
+  const interval = setInterval(refresh, 5000);
   onCleanup(() => clearInterval(interval));
 
   return (
     <div>
       <h2 class="text-2xl font-bold mb-4">Benchmark Runs</h2>
-      <Show when={!runs.loading} fallback={<div class="skeleton h-32 w-full" />}>
+      <Show when={loaded()} fallback={<div class="skeleton h-32 w-full" />}>
         <Show
-          when={runs()?.length}
+          when={runs().length > 0}
           fallback={
             <div class="card bg-base-200">
               <div class="card-body items-center text-center py-12">
@@ -195,14 +202,27 @@ const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
 };
 
 const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
-  const [metrics, { refetch: refetchMetrics }] = createResource(() => props.runId, fetchMetrics);
-  const [questions, { refetch: refetchQuestions }] = createResource(() => props.runId, fetchQuestions);
+  const [metricsData, setMetricsData] = createSignal<Metrics | null>(null);
+  const [questionsData, setQuestionsData] = createSignal<Question[]>([]);
   const [failOnly, setFailOnly] = createSignal(false);
   const [typeFilter, setTypeFilter] = createSignal("");
 
-  // Auto-refresh every 5 seconds for live progress
-  const interval = setInterval(() => { refetchMetrics(); refetchQuestions(); }, 5000);
+  // Initial fetch + auto-refresh every 5 seconds with granular signal updates
+  const refresh = async () => {
+    const [m, q] = await Promise.all([
+      fetchMetrics(props.runId),
+      fetchQuestions(props.runId),
+    ]);
+    setMetricsData(m);
+    setQuestionsData(q);
+  };
+  refresh();
+  const interval = setInterval(refresh, 5000);
   onCleanup(() => clearInterval(interval));
+
+  // Alias for template compatibility
+  const metrics = metricsData;
+  const questions = questionsData;
 
   const filteredQuestions = () => {
     let qs = questions() || [];
@@ -298,7 +318,7 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
         </div>
       </div>
 
-      <Show when={!questions.loading} fallback={<div class="skeleton h-48 w-full" />}>
+      <Show when={questions().length > 0} fallback={<div class="skeleton h-48 w-full" />}>
         <div class="overflow-x-auto">
           <table class="table table-zebra table-sm">
             <thead>
