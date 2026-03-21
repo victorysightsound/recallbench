@@ -6,6 +6,11 @@ interface RunSummary {
   system: string | null;
   total_questions: number;
   accuracy: number;
+  task_averaged: number;
+  per_type: Record<string, [number, number]>;  // [correct, total]
+  total_correct: number;
+  estimated_cost: number;
+  tokens_in: number;
 }
 
 interface Metrics {
@@ -90,18 +95,58 @@ const AccuracyBadge: Component<{ value: number; size?: string }> = (props) => {
 const RunCard: Component<{ run: RunSummary; onClick: () => void }> = (props) => {
   const accClass = () =>
     props.run.accuracy >= 0.9 ? "text-success" : props.run.accuracy >= 0.7 ? "text-warning" : "text-error";
+  const types = () => Object.entries(props.run.per_type || {}).sort((a, b) => a[0].localeCompare(b[0]));
 
   return (
     <div
       class="card bg-base-200 shadow-md hover:shadow-lg hover:border-primary border border-base-300 cursor-pointer transition-all"
       onClick={props.onClick}
     >
-      <div class="card-body p-4">
-        <h3 class="card-title text-base">{props.run.system || "Unknown"}</h3>
-        <p class={`text-3xl font-bold ${accClass()}`}>{(props.run.accuracy * 100).toFixed(1)}%</p>
-        <p class="text-xs text-base-content/50">
-          {props.run.total_questions} questions &middot; {props.run.filename}
-        </p>
+      <div class="card-body p-4 gap-2">
+        <div class="flex justify-between items-start">
+          <h3 class="card-title text-base">{props.run.system || "Unknown"}</h3>
+          <span class="text-xs text-base-content/40">{props.run.filename}</span>
+        </div>
+
+        {/* Overall scores */}
+        <div class="flex gap-4 items-baseline">
+          <div>
+            <span class="text-xs text-base-content/50">Overall</span>
+            <p class={`text-2xl font-bold ${accClass()}`}>{(props.run.accuracy * 100).toFixed(1)}%</p>
+          </div>
+          <div>
+            <span class="text-xs text-base-content/50">Task-Avg</span>
+            <p class={`text-2xl font-bold ${accClass()}`}>{(props.run.task_averaged * 100).toFixed(1)}%</p>
+          </div>
+          <div>
+            <span class="text-xs text-base-content/50">Progress</span>
+            <p class="text-lg font-semibold">{props.run.total_correct}/{props.run.total_questions}</p>
+          </div>
+        </div>
+
+        {/* Per-type breakdown */}
+        <Show when={types().length > 0}>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs mt-1">
+            <For each={types()}>
+              {([type, [correct, total]]) => {
+                const pct = total > 0 ? correct / total : 0;
+                const cls = pct >= 0.95 ? "text-success" : pct >= 0.85 ? "text-warning" : "text-error";
+                return (
+                  <div class="flex justify-between">
+                    <span class="text-base-content/60 truncate">{type}</span>
+                    <span class={cls}>{correct}/{total} ({(pct * 100).toFixed(0)}%)</span>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
+
+        {/* Cost */}
+        <div class="flex gap-4 text-xs text-base-content/40 mt-1">
+          <span>Tokens: {props.run.tokens_in > 1000000 ? `${(props.run.tokens_in / 1000000).toFixed(1)}M` : props.run.tokens_in > 1000 ? `${(props.run.tokens_in / 1000).toFixed(0)}K` : props.run.tokens_in}</span>
+          <span>Est. ${props.run.estimated_cost.toFixed(2)}</span>
+        </div>
       </div>
     </div>
   );

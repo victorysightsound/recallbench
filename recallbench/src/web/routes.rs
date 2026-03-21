@@ -35,6 +35,11 @@ struct RunSummary {
     system: Option<String>,
     total_questions: usize,
     accuracy: f64,
+    task_averaged: f64,
+    per_type: std::collections::HashMap<String, (usize, usize)>,  // type -> (correct, total)
+    total_correct: usize,
+    estimated_cost: f64,
+    tokens_in: u64,
 }
 
 async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> {
@@ -47,12 +52,27 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
                 if let Ok(results) = resume::load_results(&path) {
                     if !results.is_empty() {
                         let acc = metrics::compute_accuracy(&results);
+                        let cost = metrics::compute_cost(&results, &metrics::Pricing::default());
+
+                        // Build per-type correct/total counts
+                        let mut per_type: std::collections::HashMap<String, (usize, usize)> = std::collections::HashMap::new();
+                        for r in &results {
+                            let entry = per_type.entry(r.question_type.clone()).or_insert((0, 0));
+                            entry.1 += 1;
+                            if r.is_correct { entry.0 += 1; }
+                        }
+
                         runs.push(RunSummary {
                             id: path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
                             filename: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
                             system: Some(results[0].system_name.clone()),
                             total_questions: results.len(),
                             accuracy: acc.overall,
+                            task_averaged: acc.task_averaged,
+                            per_type,
+                            total_correct: acc.total_correct,
+                            estimated_cost: cost.estimated_cost_usd,
+                            tokens_in: cost.total_tokens_in,
                         });
                     }
                 }
