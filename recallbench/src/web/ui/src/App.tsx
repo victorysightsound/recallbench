@@ -497,15 +497,15 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
 
       <Show when={questionsOpen()}>
         <Show when={questions().length > 0} fallback={<div class="skeleton h-24 w-full" />}>
-          <div class="overflow-x-auto">
-            <table class="table table-zebra table-sm">
+          <div class="overflow-hidden w-full">
+            <table class="table table-zebra table-sm table-fixed w-full">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Type</th>
-                  <th>Correct</th>
-                  <th>Ground Truth</th>
-                  <th>Hypothesis</th>
+                  <th class="w-[12%]">ID</th>
+                  <th class="w-[14%]">Type</th>
+                  <th class="w-[8%]">Correct</th>
+                  <th class="w-[33%]">Ground Truth</th>
+                  <th class="w-[33%]">Hypothesis</th>
                 </tr>
               </thead>
               <tbody>
@@ -522,29 +522,29 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
                               ? <span class="badge badge-success badge-sm">Pass</span>
                               : <span class="badge badge-error badge-sm">Fail</span>}
                           </td>
-                          <td class="max-w-xs">
-                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm w-full" data-tip={stripMd(q.ground_truth)}>
-                              <div class="truncate max-w-xs text-left overflow-hidden whitespace-nowrap text-ellipsis">{stripMd(q.ground_truth)}</div>
+                          <td>
+                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm before:whitespace-pre-wrap w-full" data-tip={stripMd(q.ground_truth)}>
+                              <div class="truncate text-left">{stripMd(q.ground_truth)}</div>
                             </div>
                           </td>
-                          <td class="max-w-xs">
-                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm w-full" data-tip={stripMd(q.hypothesis)}>
-                              <div class="truncate max-w-xs text-left overflow-hidden whitespace-nowrap text-ellipsis">{stripMd(q.hypothesis)}</div>
+                          <td>
+                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm before:whitespace-pre-wrap w-full" data-tip={stripMd(q.hypothesis)}>
+                              <div class="truncate text-left">{stripMd(q.hypothesis)}</div>
                             </div>
                           </td>
                         </tr>
                         <Show when={showDetail()}>
                           <tr>
                             <td colspan="5" class="bg-base-300 p-4">
-                              <div class="space-y-3 text-sm">
+                              <div class="space-y-3 text-sm max-w-full overflow-hidden">
                                 <div>
                                   <span class="font-semibold text-base-content/70">Ground Truth:</span>
-                                  <p class="mt-1">{q.ground_truth}</p>
+                                  <p class="mt-1 break-words">{q.ground_truth}</p>
                                 </div>
                                 <div class="divider my-1"></div>
                                 <div>
                                   <span class="font-semibold text-base-content/70">Model Response:</span>
-                                  <div class="mt-1">
+                                  <div class="mt-1 break-words overflow-hidden">
                                     <Markdown text={q.hypothesis} />
                                   </div>
                                 </div>
