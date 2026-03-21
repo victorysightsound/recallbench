@@ -61,12 +61,10 @@ pub struct LlmConfig {
     pub openai: ProviderConfig,
     #[serde(default)]
     pub gemini: ProviderConfig,
-    /// Custom OpenAI-compatible endpoint.
-    #[serde(default)]
-    pub custom: Option<CustomEndpoint>,
-    /// Local inference endpoint (Ollama, vLLM, etc.).
-    #[serde(default)]
-    pub local: Option<CustomEndpoint>,
+    /// Named OpenAI-compatible endpoints, selectable via --gen-model <name>
+    /// e.g., [llm.deepinfra], [llm.local], [llm.together]
+    #[serde(flatten)]
+    pub endpoints: std::collections::HashMap<String, CustomEndpoint>,
 }
 
 /// Configuration for an OpenAI-compatible custom endpoint.

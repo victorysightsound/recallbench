@@ -593,26 +593,17 @@ async fn cmd_run(
     Ok(())
 }
 
-/// Create an LLM client from a model string, resolving custom/local endpoints from config.
+/// Create an LLM client from a model string, resolving named endpoints from config.
 fn create_llm_client(model: &str, cfg: &config::Config) -> Result<Arc<dyn traits::LLMClient>> {
-    // Check for custom endpoint names first
+    // Check for named endpoint in config (e.g., --gen-model deepinfra matches [llm.deepinfra])
+    if let Some(ep) = cfg.llm.endpoints.get(model) {
+        let client = llm::compatible::CompatibleClient::from_config(model, ep)?;
+        return Ok(Arc::new(client));
+    }
+
+    // Default: use CLI adapter for known providers (claude, chatgpt, gemini, codex)
     match model {
-        "custom" => {
-            if let Some(ref ep) = cfg.llm.custom {
-                let client = llm::compatible::CompatibleClient::from_config("custom", ep)?;
-                return Ok(Arc::new(client));
-            }
-            anyhow::bail!("No [llm.custom] section in recallbench.toml");
-        }
-        "local" => {
-            if let Some(ref ep) = cfg.llm.local {
-                let client = llm::compatible::CompatibleClient::from_config("local", ep)?;
-                return Ok(Arc::new(client));
-            }
-            anyhow::bail!("No [llm.local] section in recallbench.toml");
-        }
         _ => {
-            // Default: use CLI adapter
             let (provider, _) = llm::LLMRegistry::resolve_provider(model);
             Ok(Arc::new(llm::cli::CliLLMClient::new(provider, model)))
         }
