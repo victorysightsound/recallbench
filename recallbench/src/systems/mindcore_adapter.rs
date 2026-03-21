@@ -9,6 +9,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 use mindcore::context::ContextBudget;
+use mindcore::embeddings::CandleNativeBackend;
 use mindcore::engine::MemoryEngine;
 use mindcore::memory::store::StoreResult;
 use mindcore::traits::{MemoryRecord, MemoryType};
@@ -50,7 +51,10 @@ pub struct MindCoreAdapter {
 
 impl MindCoreAdapter {
     pub fn new() -> Result<Self> {
-        let engine = MemoryEngine::<ConversationMemory>::builder().build()?;
+        let embedding = CandleNativeBackend::new()?;
+        let engine = MemoryEngine::<ConversationMemory>::builder()
+            .embedding_backend(embedding)
+            .build()?;
         Ok(Self { engine: Mutex::new(engine) })
     }
 }
@@ -61,7 +65,10 @@ impl MemorySystem for MindCoreAdapter {
     fn version(&self) -> &str { env!("CARGO_PKG_VERSION") }
 
     async fn reset(&self) -> Result<()> {
-        let new_engine = MemoryEngine::<ConversationMemory>::builder().build()?;
+        let embedding = CandleNativeBackend::new()?;
+        let new_engine = MemoryEngine::<ConversationMemory>::builder()
+            .embedding_backend(embedding)
+            .build()?;
         let mut guard = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         *guard = new_engine;
         Ok(())
@@ -71,12 +78,11 @@ impl MemorySystem for MindCoreAdapter {
         let start = std::time::Instant::now();
         let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let session_date = session.date.clone().unwrap_or_default();
-        let mut stored = 0usize;
-        let mut duplicates = 0usize;
 
-        for (turn_idx, turn) in session.turns.iter().enumerate() {
-            if turn.content.trim().is_empty() { continue; }
-            let memory = ConversationMemory {
+        // Collect all records first, then batch store for efficient embedding
+        let records: Vec<ConversationMemory> = session.turns.iter().enumerate()
+            .filter(|(_, turn)| !turn.content.trim().is_empty())
+            .map(|(turn_idx, turn)| ConversationMemory {
                 id: None,
                 content: turn.content.clone(),
                 role: turn.role.clone(),
@@ -84,11 +90,16 @@ impl MemorySystem for MindCoreAdapter {
                 turn_index: turn_idx,
                 session_date: session_date.clone(),
                 created_at: Utc::now(),
-            };
-            match engine.store(&memory) {
-                Ok(StoreResult::Added(_)) => stored += 1,
-                Ok(StoreResult::Duplicate(_)) => duplicates += 1,
-                Err(e) => tracing::warn!("Failed to store turn: {e}"),
+            })
+            .collect();
+
+        let results = engine.store_batch(&records)?;
+        let mut stored = 0usize;
+        let mut duplicates = 0usize;
+        for result in &results {
+            match result {
+                StoreResult::Added(_) => stored += 1,
+                StoreResult::Duplicate(_) => duplicates += 1,
             }
         }
 
