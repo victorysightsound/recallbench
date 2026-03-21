@@ -522,16 +522,8 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
                               ? <span class="badge badge-success badge-sm">Pass</span>
                               : <span class="badge badge-error badge-sm">Fail</span>}
                           </td>
-                          <td>
-                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm before:whitespace-pre-wrap w-full" data-tip={stripMd(q.ground_truth)}>
-                              <div class="truncate text-left">{stripMd(q.ground_truth)}</div>
-                            </div>
-                          </td>
-                          <td>
-                            <div class="tooltip tooltip-bottom before:text-left before:max-w-sm before:whitespace-pre-wrap w-full" data-tip={stripMd(q.hypothesis)}>
-                              <div class="truncate text-left">{stripMd(q.hypothesis)}</div>
-                            </div>
-                          </td>
+                          <td><div class="truncate text-left">{stripMd(q.ground_truth)}</div></td>
+                          <td><div class="truncate text-left">{stripMd(q.hypothesis)}</div></td>
                         </tr>
                         <Show when={showDetail()}>
                           <tr>
