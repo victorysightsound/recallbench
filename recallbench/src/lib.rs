@@ -42,4 +42,5 @@ pub mod sampling;
 pub mod systems;
 pub mod traits;
 pub mod types;
+pub mod verify;
 pub mod web;
