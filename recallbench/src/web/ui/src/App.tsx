@@ -98,6 +98,20 @@ const AccuracyBadge: Component<{ value: number; size?: string }> = (props) => {
   );
 };
 
+/** Strip markdown formatting symbols */
+const stripMd = (s: string) =>
+  s.replace(/\*\*/g, "").replace(/\*/g, "").replace(/#{1,6}\s?/g, "").replace(/`/g, "").replace(/\n/g, " ").trim();
+
+/** Format elapsed time as human readable */
+const formatElapsed = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+};
+
 const formatTokens = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : `${n}`;
 
@@ -347,25 +361,28 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
       <Show when={metrics()}>
         {(m) => {
           const evaluated = m().accuracy.total_questions;
-          const correct = m().accuracy.total_correct;
           const target = runInfo()?.total_target || evaluated;
-          const accPct = evaluated > 0 ? correct / evaluated : 0;
-          const progressPct = target > 0 ? evaluated / target : 0;
+          const progressPct = target > 0 ? evaluated / target : 1;
           const isRunning = target > evaluated;
+          const startedAt = runInfo()?.started_at;
+          const elapsed = startedAt ? Date.now() - new Date(startedAt).getTime() : 0;
+          const msPerQuestion = evaluated > 0 ? elapsed / evaluated : 0;
+          const remaining = (target - evaluated) * msPerQuestion;
           return (
             <div class="mb-6">
               <div class="flex justify-between items-baseline mb-1">
                 <span class="text-sm text-base-content/60">
-                  {correct} correct of {evaluated} evaluated
-                  {target > evaluated ? ` / ${target} total` : ""}
-                  {" — "}{(accPct * 100).toFixed(1)}% accuracy
-                  {isRunning ? <span class="badge badge-info badge-xs ml-2">Running</span> : ""}
+                  Progress: {evaluated}/{target}
+                  {isRunning ? <span class="badge badge-info badge-xs ml-2">Running</span> : <span class="badge badge-success badge-xs ml-2">Complete</span>}
                 </span>
-                <span class="text-sm text-base-content/40">{evaluated - correct} failures</span>
+                <span class="text-xs text-base-content/40">
+                  {elapsed > 0 ? `Elapsed: ${formatElapsed(elapsed)}` : ""}
+                  {isRunning && msPerQuestion > 0 ? ` — ETA: ${formatElapsed(remaining)}` : ""}
+                </span>
               </div>
               <div class="w-full bg-base-300 rounded-full h-2.5">
                 <div
-                  class={`h-2.5 rounded-full transition-all ${accPct >= 0.9 ? 'bg-success' : accPct >= 0.7 ? 'bg-warning' : 'bg-error'}`}
+                  class={`h-2.5 rounded-full transition-all ${isRunning ? 'bg-info' : 'bg-success'}`}
                   style={{ width: `${Math.round(progressPct * 100)}%` }}
                 ></div>
               </div>
@@ -477,19 +494,41 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
               </thead>
               <tbody>
                 <For each={pagedQuestions()}>
-                  {(q) => (
-                    <tr>
-                      <td class="font-mono text-xs">{q.question_id}</td>
-                      <td><span class="badge badge-ghost badge-sm">{q.question_type}</span></td>
-                      <td>
-                        {q.is_correct
-                          ? <span class="badge badge-success badge-sm">Pass</span>
-                          : <span class="badge badge-error badge-sm">Fail</span>}
-                      </td>
-                      <td class="max-w-xs truncate">{q.ground_truth}</td>
-                      <td class="max-w-xs truncate">{q.hypothesis}</td>
-                    </tr>
-                  )}
+                  {(q) => {
+                    const [showDetail, setShowDetail] = createSignal(false);
+                    return (
+                      <>
+                        <tr class="cursor-pointer hover" onClick={() => setShowDetail(!showDetail())}>
+                          <td class="font-mono text-xs">{q.question_id}</td>
+                          <td><span class="badge badge-ghost badge-sm">{q.question_type}</span></td>
+                          <td>
+                            {q.is_correct
+                              ? <span class="badge badge-success badge-sm">Pass</span>
+                              : <span class="badge badge-error badge-sm">Fail</span>}
+                          </td>
+                          <td class="max-w-xs truncate" title={stripMd(q.ground_truth)}>{stripMd(q.ground_truth)}</td>
+                          <td class="max-w-xs truncate" title={stripMd(q.hypothesis)}>{stripMd(q.hypothesis)}</td>
+                        </tr>
+                        <Show when={showDetail()}>
+                          <tr>
+                            <td colspan="5" class="bg-base-300 p-4">
+                              <div class="space-y-3 text-sm">
+                                <div>
+                                  <span class="font-semibold text-base-content/70">Ground Truth:</span>
+                                  <p class="mt-1 whitespace-pre-wrap">{stripMd(q.ground_truth)}</p>
+                                </div>
+                                <div class="divider my-1"></div>
+                                <div>
+                                  <span class="font-semibold text-base-content/70">Model Response:</span>
+                                  <p class="mt-1 whitespace-pre-wrap">{stripMd(q.hypothesis)}</p>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </Show>
+                      </>
+                    );
+                  }}
                 </For>
               </tbody>
             </table>
