@@ -90,6 +90,19 @@ pub async fn run_benchmark(
         system.version(),
     );
 
+    // Write run metadata so the web UI knows the target count
+    let meta_path = config.output_path.with_extension("meta.json");
+    let meta = serde_json::json!({
+        "system": system.name(),
+        "dataset": dataset.name(),
+        "variant": dataset.variant(),
+        "total_questions": questions.len(),
+        "started_at": chrono::Utc::now().to_rfc3339(),
+    });
+    if let Ok(json) = serde_json::to_string_pretty(&meta) {
+        let _ = std::fs::write(&meta_path, json);
+    }
+
     let pb = ProgressBar::new(questions.len() as u64);
     pb.set_style(
         ProgressStyle::default_bar()
