@@ -1,6 +1,6 @@
 # MindCore LongMemEval Optimization History
 
-Results from the v1 → v3 optimization journey that brought MindCore from 87.0% to 95.6% on LongMemEval Oracle, surpassing OMEGA Memory's 95.4%.
+Results from the v1 → v4 optimization journey that brought MindCore from 87.0% to 95.6% on LongMemEval Oracle, surpassing OMEGA Memory's 95.4%.
 
 All runs below were executed via mindcore-bench (now deprecated) and imported into RecallBench for historical tracking.
 
@@ -10,7 +10,8 @@ All runs below were executed via mindcore-bench (now deprecated) and imported in
 |-----|---------------|---------|------|-------------|
 | v1 | 81.9% | 87.0% (435/500) | 2026-03-20 | Baseline: generic prompts, Haiku judge |
 | v2 | 93.8% | 94.8% (474/500) | 2026-03-20 | Type-specific prompts, Sonnet judge, unlimited context |
-| v3 | 95.5% | 95.6% (478/500) | 2026-03-20 | Self-verification, preference few-shots, lenient abstention |
+| v3 | 93.2% | 92.4% (462/500) | 2026-03-20 | Added temporal verification — REGRESSION, proved verification hurts strong categories |
+| v4 | 95.5% | 95.6% (478/500) | 2026-03-20 | Verification fixed (temporal excluded), preference few-shots, lenient abstention |
 
 ## What Changed Between Versions
 
@@ -32,11 +33,23 @@ All runs below were executed via mindcore-bench (now deprecated) and imported in
 4. **Better abstention detection**
    - Explicit "MUST respond with I don't know" instruction
 
-### v2 → v3 (+4 questions, +0.8% overall)
+### v2 → v3 (-12 questions, -2.4% overall — REGRESSION)
 
-1. **Self-verification pass** (multi-session + knowledge-update only)
+Applied self-verification to ALL question types including temporal reasoning.
+
+1. **Self-verification pass** (multi-session, temporal, knowledge-update)
    - Second LLM call re-checks counting, arithmetic, version selection
-   - NOT applied to temporal reasoning (caused regressions in v3-draft)
+   - Temporal verification caused 20 regressions — verifier re-did date calculations from scratch and arrived at different wrong answers, overwriting correct ones
+   - Temporal dropped from 97.0% to 83.5%
+
+**Lesson learned: Self-verification hurts categories where the initial answer is already strong. Only apply it where it demonstrably helps.**
+
+### v3 → v4 (+16 questions, +3.2% overall — RECOVERY)
+
+Fixed verification (excluded temporal), added preference and abstention improvements.
+
+1. **Self-verification pass fixed** (multi-session + knowledge-update ONLY)
+   - Temporal reasoning excluded based on v3 lesson
 
 2. **Preference few-shot examples**
    - Sony camera accessories and quinoa recipe examples
@@ -46,23 +59,18 @@ All runs below were executed via mindcore-bench (now deprecated) and imported in
    - Accepts responses that explain WHY they can't answer
    - As long as primary conclusion is abstention
 
-### v3-draft (failed attempt, kept for research)
-   - Applied verification to temporal reasoning
-   - Caused 20 regressions — verifier re-did date calculations and got different wrong answers
-   - Lesson: only apply verification where the initial answer is weak
-
 ## Per-Type Progression
 
-| Category | v1 | v2 | v3 |
-|----------|-----|-----|-----|
-| Temporal Reasoning (133) | 91.0% | 97.0% | 97.7% |
-| Knowledge Update (78) | 91.0% | 94.9% | 97.4% |
-| Multi-Session (133) | 85.7% | 91.0% | 91.0% |
-| SS-User (70) | 94.3% | 100% | 98.6% |
-| SS-Assistant (56) | 92.9% | 100% | 98.2% |
-| SS-Preference (30) | 36.7% | 80.0% | 90.0% |
+| Category | v1 | v2 | v3 (regression) | v4 |
+|----------|-----|-----|------|-----|
+| Temporal Reasoning (133) | 91.0% | 97.0% | 83.5% | 97.7% |
+| Knowledge Update (78) | 91.0% | 94.9% | 97.4% | 97.4% |
+| Multi-Session (133) | 85.7% | 91.0% | 93.2% | 91.0% |
+| SS-User (70) | 94.3% | 100% | 100% | 98.6% |
+| SS-Assistant (56) | 92.9% | 100% | 98.2% | 98.2% |
+| SS-Preference (30) | 36.7% | 80.0% | 86.7% | 90.0% |
 
-## Remaining Weaknesses (v3)
+## Remaining Weaknesses (v4)
 
 - **Multi-session counting** (12/22 failures): model enumerates items correctly but computes wrong total
 - **Preference specificity** (3 failures): still describes format instead of content preferences
@@ -77,7 +85,8 @@ All runs below were executed via mindcore-bench (now deprecated) and imported in
 |------|-------------|
 | `mindcore-longmemeval-v1-via-mindcore-bench.jsonl` | v1 results (500 questions, 87.0%) |
 | `mindcore-longmemeval-v2-via-mindcore-bench.jsonl` | v2 results (500 questions, 94.8%) |
-| `mindcore-longmemeval-v3-via-mindcore-bench.jsonl` | v3 results (500 questions, 95.6% — current best) |
+| `mindcore-longmemeval-v3-via-mindcore-bench.jsonl` | v3 results (500 questions, 92.4% — temporal verification regression) |
+| `mindcore-longmemeval-v4-via-mindcore-bench.jsonl` | v4 results (500 questions, 95.6% — current best) |
 | `mindcore-longmemeval-v3-draft-via-mindcore-bench.jsonl` | v3-draft results (500 questions, 92.4% — failed temporal verification, kept for research) |
 | `*.meta.json` | Run metadata for each version |
 
@@ -86,8 +95,8 @@ All runs below were executed via mindcore-bench (now deprecated) and imported in
 |------|-------------|
 | `mindcore-v1-runtime.log` | v1 runtime log with per-question processing details |
 | `mindcore-v2-runtime.log` | v2 runtime log |
-| `mindcore-v3-draft-runtime.log` | v3-draft runtime log (temporal verification attempt) |
-| `mindcore-v3-runtime.log` | v3 runtime log |
+| `mindcore-v3-runtime.log` | v3 runtime log (temporal verification regression) |
+| `mindcore-v4-runtime.log` | v4 runtime log (current best) |
 
 ### Analysis Documents
 | File | Description |
