@@ -96,6 +96,21 @@ For OpenAI-compatible endpoints, use the existing `compatible.rs` client with a 
 - Keep dependencies minimal — prefer direct HTTP over SDK crates
 - Use `anyhow` for error handling in the binary crate
 
+## Build Tasks (xtask)
+
+```bash
+# Build the web UI (Solid.js + Core UI + Tailwind)
+cargo xtask build-ui
+
+# Build everything (web UI + Rust workspace)
+cargo xtask build-all
+
+# Start Vite dev server for UI development (hot reload)
+cargo xtask dev-ui
+```
+
+The web UI source is in `recallbench/src/web/ui/`. After changing UI code, run `cargo xtask build-ui` to rebuild the inlined `dist/index.html` that gets embedded in the binary.
+
 ## Testing
 
 ```bash
