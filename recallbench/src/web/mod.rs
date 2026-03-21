@@ -8,7 +8,7 @@ use rust_embed::Embed;
 use tower_http::cors::CorsLayer;
 
 #[derive(Embed)]
-#[folder = "src/web/static/"]
+#[folder = "src/web/ui/dist/"]
 struct StaticAssets;
 
 /// Start the web UI server.
