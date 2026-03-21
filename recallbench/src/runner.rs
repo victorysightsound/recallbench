@@ -21,6 +21,8 @@ pub struct RunConfig {
     pub resume: bool,
     /// If Some(n), use stratified sampling to select n questions.
     pub quick_size: Option<usize>,
+    /// Optional note describing the purpose of this run.
+    pub note: Option<String>,
 }
 
 /// Run a benchmark: evaluate all questions against a memory system.
@@ -98,6 +100,7 @@ pub async fn run_benchmark(
         "variant": dataset.variant(),
         "total_questions": questions.len(),
         "started_at": chrono::Utc::now().to_rfc3339(),
+        "note": config.note.as_deref().unwrap_or(""),
     });
     if let Ok(json) = serde_json::to_string_pretty(&meta) {
         let _ = std::fs::write(&meta_path, json);

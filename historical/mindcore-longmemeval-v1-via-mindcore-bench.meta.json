@@ -1,1 +1,0 @@
-{"system":"mindcore","dataset":"longmemeval","variant":"oracle","total_questions":500,"started_at":"2026-03-20T06:00:00Z","note":"Baseline run. Generic single prompt for all question types. Haiku judge (too strict — rejected correct answers with different phrasing). Context budget 16,384 tokens.","gen_model":"claude-sonnet","judge_model":"claude-haiku"}
