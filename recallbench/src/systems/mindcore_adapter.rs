@@ -79,15 +79,17 @@ impl MemorySystem for MindCoreAdapter {
         let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let session_date = session.date.clone().unwrap_or_default();
 
-        // Collect all records first, then batch store for efficient embedding
-        let records: Vec<ConversationMemory> = session.turns.iter().enumerate()
-            .filter(|(_, turn)| !turn.content.trim().is_empty())
-            .map(|(turn_idx, turn)| ConversationMemory {
+        // Chunk session turns into ~500-char segments for higher-quality embeddings
+        let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
+        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 500, 10);
+
+        let records: Vec<ConversationMemory> = chunks.iter().enumerate()
+            .map(|(idx, chunk)| ConversationMemory {
                 id: None,
-                content: turn.content.clone(),
-                role: turn.role.clone(),
+                content: chunk.text.clone(),
+                role: "chunk".to_string(),
                 session_index: 0,
-                turn_index: turn_idx,
+                turn_index: idx,
                 session_date: session_date.clone(),
                 created_at: Utc::now(),
             })
