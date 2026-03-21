@@ -75,6 +75,9 @@ pub struct CustomEndpoint {
     pub base_url: String,
     #[serde(default)]
     pub api_key_env: String,
+    /// Shell command to fetch API key at runtime (e.g., "op read op://Personal/DeepInfra/credential")
+    #[serde(default)]
+    pub api_key_cmd: Option<String>,
     pub model: String,
     #[serde(default)]
     pub rate_limit_rpm: u32,

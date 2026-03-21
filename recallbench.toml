@@ -1,0 +1,19 @@
+[defaults]
+concurrency = 10
+token_budget = 16384
+gen_model = "claude-sonnet"
+judge_model = "claude-sonnet"
+output_dir = "results"
+quick_size = 50
+
+[llm.anthropic]
+mode = "cli"
+rate_limit_rpm = 60
+
+# DeepInfra GPT-OSS-120B — use with --gen-model custom or --judge-model custom
+[llm.custom]
+base_url = "https://api.deepinfra.com/v1/openai"
+api_key_cmd = "op read 'op://Personal/DeepInfra/credential' 2>/dev/null || security find-generic-password -w -s 'DeepInfra' 2>/dev/null"
+model = "openai/gpt-oss-120b"
+rate_limit_rpm = 120
+rate_limit_tpm = 0

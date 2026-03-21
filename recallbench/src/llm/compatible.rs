@@ -51,9 +51,31 @@ struct ResponseMessage {
 impl CompatibleClient {
     /// Create from a CustomEndpoint config section.
     pub fn from_config(name: &str, config: &CustomEndpoint) -> Result<Self> {
-        let api_key = if config.api_key_env.is_empty() {
-            None
-        } else {
+        // Try api_key_cmd first (e.g., "op read ..." or "security find-generic-password ...")
+        let api_key = if let Some(ref cmd) = config.api_key_cmd {
+            match std::process::Command::new("sh")
+                .args(["-c", cmd])
+                .output()
+            {
+                Ok(output) if output.status.success() => {
+                    let key = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if key.is_empty() {
+                        tracing::warn!("api_key_cmd for '{name}' returned empty");
+                        None
+                    } else {
+                        Some(key)
+                    }
+                }
+                Ok(output) => {
+                    tracing::warn!("api_key_cmd for '{name}' failed: {}", String::from_utf8_lossy(&output.stderr).trim());
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!("api_key_cmd for '{name}' error: {e}");
+                    None
+                }
+            }
+        } else if !config.api_key_env.is_empty() {
             match std::env::var(&config.api_key_env) {
                 Ok(key) => Some(key),
                 Err(_) => {
@@ -64,6 +86,8 @@ impl CompatibleClient {
                     None
                 }
             }
+        } else {
+            None
         };
 
         Ok(Self {
