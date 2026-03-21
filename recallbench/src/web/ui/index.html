@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecallBench</title>
+    <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body class="bg-base-100 text-base-content min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <div class="navbar bg-base-200 border-b border-base-300 px-4">
+        <div class="navbar-start">
+            <span class="text-primary font-bold text-lg">RecallBench</span>
+            <span class="text-base-content/50 text-sm ml-2">Universal AI Memory Benchmark</span>
+        </div>
+        <div class="navbar-end gap-2">
+            <button class="btn btn-sm btn-ghost" id="nav-dashboard">Dashboard</button>
+            <select id="theme-select" class="select select-sm select-bordered w-28">
+                <option value="midnight" selected>Midnight</option>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="cyber">Cyber</option>
+                <option value="midnight">Midnight</option>
+                <option value="onyx">Onyx</option>
+                <option value="slate">Slate</option>
+                <option value="frost">Frost</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
+
+        <!-- Dashboard View -->
+        <div id="dashboard">
+            <h2 class="text-2xl font-bold mb-4">Benchmark Runs</h2>
+            <div id="runs-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="skeleton h-32 w-full"></div>
+            </div>
+        </div>
+
+        <!-- Run Detail View -->
+        <div id="run-detail" class="hidden">
+            <!-- Breadcrumb -->
+            <div class="breadcrumbs text-sm mb-4">
+                <ul>
+                    <li><a class="cursor-pointer nav-home">Dashboard</a></li>
+                    <li id="run-breadcrumb"></li>
+                </ul>
+            </div>
+
+            <h2 class="text-2xl font-bold mb-4" id="run-title"></h2>
+
+            <!-- Stats Cards -->
+            <div id="stats-cards" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6"></div>
+
+            <!-- Per-Type Accuracy Table -->
+            <div id="type-table-container" class="mb-6"></div>
+
+            <!-- Questions Section -->
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-semibold">Questions</h3>
+                <div class="flex gap-3 items-center">
+                    <label class="label cursor-pointer gap-2">
+                        <span class="label-text text-sm">Failures only</span>
+                        <input type="checkbox" id="show-failures-only" class="toggle toggle-sm toggle-error" class="filter-change">
+                    </label>
+                    <select id="type-filter" class="select select-sm select-bordered" class="filter-change">
+                        <option value="">All types</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="table table-zebra table-sm">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Correct</th>
+                            <th>Ground Truth</th>
+                            <th>Hypothesis</th>
+                        </tr>
+                    </thead>
+                    <tbody id="questions-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer footer-center p-3 bg-base-200 text-base-content/50 text-xs border-t border-base-300">
+        <p>RecallBench — Universal AI Memory System Benchmark</p>
+    </footer>
+
+    <script type="module" src="./src/app.js"></script>
+</body>
+</html>

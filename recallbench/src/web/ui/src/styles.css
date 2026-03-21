@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@plugin "core-ui" {
+  themes: all --order dark,light,cyber,midnight,onyx,slate,frost;
+}
+
+/* RecallBench-specific overrides */
+.accuracy-good { color: oklch(76% 0.177 163.223); }   /* success green */
+.accuracy-mid { color: oklch(82% 0.189 84.429); }     /* warning yellow */
+.accuracy-bad { color: oklch(71% 0.194 13.428); }      /* error red */

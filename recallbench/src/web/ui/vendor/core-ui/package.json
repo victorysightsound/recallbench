@@ -1,0 +1,52 @@
+{
+  "type": "module",
+  "name": "core-ui",
+  "version": "5.5.14",
+  "description": "CORE UI - Component library for the CORE framework",
+  "license": "MIT",
+  "main": "./index.js",
+  "module": "./index.js",
+  "browser": "./core-ui.css",
+  "files": [
+    "base",
+    "colors",
+    "components",
+    "!components/*/class.json",
+    "functions/addPrefix.js",
+    "functions/plugin.js",
+    "functions/pluginOptionsHandler.js",
+    "functions/themeOrder.js",
+    "functions/variables.js",
+    "theme",
+    "utilities",
+    "imports.js",
+    "index.js",
+    "chunks.css",
+    "core-ui.css",
+    "themes.css"
+  ],
+  "scripts": {
+    "build": "node build.js"
+  },
+  "keywords": [
+    "core-ui",
+    "core",
+    "tailwind",
+    "tailwindcss",
+    "component",
+    "ui"
+  ],
+  "devDependencies": {
+    "postcss": "^8.4.47",
+    "postcss-js": "^4.0.1",
+    "tailwindcss": "^4.1.3"
+  },
+  "peerDependencies": {
+    "tailwindcss": ">=4.0.0"
+  },
+  "_upstream": {
+    "name": "daisyui",
+    "version": "5.5.14",
+    "syncedAt": "2026-01-21T06:23:23.506Z"
+  }
+}
