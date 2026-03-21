@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 (2026-03-21)
+
+All remaining enhancements implemented. No known gaps.
+
+### Added
+- `calibrate` subcommand fully functional with 50 pre-scored calibration pairs (`calibration/longmemeval_50.json`)
+- `--stress N` flag: run benchmark N times, report mean/variance/stddev/min/max accuracy
+- `--budget-sweep` flag: run at budgets 4096/8192/16384/32768, report accuracy vs. budget curve
+- Web UI: Compare view — side-by-side system comparison with per-type accuracy diff
+- Web UI: Longevity view — SVG accuracy and latency charts from longevity JSON results
+- Web UI: Compare and Longevity navigation buttons in navbar
+
 ## 0.3.0 (2026-03-21)
 
 All dataset parsers rewritten against real schemas and validated with actual downloaded data.

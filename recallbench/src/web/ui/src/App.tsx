@@ -281,9 +281,210 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
   );
 };
 
+// Comparison View
+const CompareView: Component<{ onBack: () => void }> = (props) => {
+  const [runs] = createResource(fetchRuns);
+  const [selectedA, setSelectedA] = createSignal("");
+  const [selectedB, setSelectedB] = createSignal("");
+  const [metricsA] = createResource(() => selectedA() || undefined, (id) => fetchMetrics(id));
+  const [metricsB] = createResource(() => selectedB() || undefined, (id) => fetchMetrics(id));
+
+  return (
+    <div>
+      <div class="breadcrumbs text-sm mb-4">
+        <ul><li><a class="cursor-pointer" onClick={props.onBack}>Dashboard</a></li><li>Compare</li></ul>
+      </div>
+      <h2 class="text-2xl font-bold mb-4">Compare Systems</h2>
+
+      <div class="flex gap-4 mb-6">
+        <select class="select select-bordered flex-1" onChange={(e) => setSelectedA(e.target.value)}>
+          <option value="">Select System A</option>
+          <Show when={runs()}><For each={runs()!}>{(r) => <option value={r.id}>{r.system} ({r.filename})</option>}</For></Show>
+        </select>
+        <select class="select select-bordered flex-1" onChange={(e) => setSelectedB(e.target.value)}>
+          <option value="">Select System B</option>
+          <Show when={runs()}><For each={runs()!}>{(r) => <option value={r.id}>{r.system} ({r.filename})</option>}</For></Show>
+        </select>
+      </div>
+
+      <Show when={metricsA() && metricsB()}>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra">
+            <thead><tr><th>Metric</th><th>{selectedA()}</th><th>{selectedB()}</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="font-semibold">Task-Averaged</td>
+                <td><AccuracyBadge value={metricsA()!.accuracy.task_averaged} /></td>
+                <td><AccuracyBadge value={metricsB()!.accuracy.task_averaged} /></td>
+              </tr>
+              <tr>
+                <td class="font-semibold">Overall</td>
+                <td><AccuracyBadge value={metricsA()!.accuracy.overall} /></td>
+                <td><AccuracyBadge value={metricsB()!.accuracy.overall} /></td>
+              </tr>
+              <tr>
+                <td class="font-semibold">Questions</td>
+                <td>{metricsA()!.accuracy.total_questions}</td>
+                <td>{metricsB()!.accuracy.total_questions}</td>
+              </tr>
+              <tr>
+                <td class="font-semibold">Retrieval p50</td>
+                <td>{metricsA()!.latency.retrieval_p50.toFixed(0)}ms</td>
+                <td>{metricsB()!.latency.retrieval_p50.toFixed(0)}ms</td>
+              </tr>
+              <tr>
+                <td class="font-semibold">Est. Cost</td>
+                <td>${metricsA()!.cost.estimated_usd.toFixed(2)}</td>
+                <td>${metricsB()!.cost.estimated_usd.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Per-type comparison */}
+        <h3 class="text-lg font-semibold mt-6 mb-3">Per-Type Accuracy</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra table-sm">
+            <thead><tr><th>Type</th><th>{selectedA()}</th><th>{selectedB()}</th><th>Diff</th></tr></thead>
+            <tbody>
+              <For each={Object.keys({...metricsA()!.accuracy.per_type, ...metricsB()!.accuracy.per_type}).sort()}>
+                {(type) => {
+                  const a = metricsA()!.accuracy.per_type[type] || 0;
+                  const b = metricsB()!.accuracy.per_type[type] || 0;
+                  const diff = a - b;
+                  const diffCls = diff > 0 ? "text-success" : diff < 0 ? "text-error" : "";
+                  return (
+                    <tr>
+                      <td>{type}</td>
+                      <td><AccuracyBadge value={a} /></td>
+                      <td><AccuracyBadge value={b} /></td>
+                      <td class={diffCls}>{diff > 0 ? "+" : ""}{(diff * 100).toFixed(1)}%</td>
+                    </tr>
+                  );
+                }}
+              </For>
+            </tbody>
+          </table>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
+// Longevity View
+const LongevityView: Component<{ onBack: () => void }> = (props) => {
+  const [data, setData] = createSignal<any>(null);
+
+  const loadFile = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setData(JSON.parse(text));
+  };
+
+  const maxAcc = () => data() ? Math.max(...data().checkpoints.map((c: any) => c.accuracy)) : 1;
+  const maxLat = () => data() ? Math.max(...data().checkpoints.map((c: any) => c.avg_retrieval_latency_ms)) : 1;
+
+  return (
+    <div>
+      <div class="breadcrumbs text-sm mb-4">
+        <ul><li><a class="cursor-pointer" onClick={props.onBack}>Dashboard</a></li><li>Longevity</li></ul>
+      </div>
+      <h2 class="text-2xl font-bold mb-4">Longevity Analysis</h2>
+
+      <div class="mb-6">
+        <input type="file" accept=".json" class="file-input file-input-bordered" onChange={loadFile} />
+        <p class="text-xs text-base-content/50 mt-1">Load a longevity result JSON file from <code>recallbench longevity --output</code></p>
+      </div>
+
+      <Show when={data()}>
+        <h3 class="text-lg font-semibold mb-2">{data().system_name} — Accuracy Over Time</h3>
+        <svg viewBox="0 0 600 200" class="w-full max-w-2xl mb-6 bg-base-200 rounded-box p-2">
+          <For each={data().checkpoints}>
+            {(cp: any, i) => {
+              const x = () => 50 + (i() / (data().checkpoints.length - 1 || 1)) * 500;
+              const y = () => 180 - (cp.accuracy / (maxAcc() || 1)) * 160;
+              const nextCp = () => data().checkpoints[i() + 1];
+              return (
+                <>
+                  <circle cx={x()} cy={y()} r="4" fill="oklch(76% 0.177 163.223)" />
+                  <text x={x()} y={y() - 10} text-anchor="middle" font-size="10" fill="currentColor">
+                    {(cp.accuracy * 100).toFixed(0)}%
+                  </text>
+                  <Show when={nextCp()}>
+                    {(next) => {
+                      const nx = () => 50 + ((i() + 1) / (data().checkpoints.length - 1 || 1)) * 500;
+                      const ny = () => 180 - (next().accuracy / (maxAcc() || 1)) * 160;
+                      return <line x1={x()} y1={y()} x2={nx()} y2={ny()} stroke="oklch(76% 0.177 163.223)" stroke-width="2" />;
+                    }}
+                  </Show>
+                  <text x={x()} y={195} text-anchor="middle" font-size="9" fill="currentColor" opacity="0.5">
+                    {cp.sessions_ingested}
+                  </text>
+                </>
+              );
+            }}
+          </For>
+          <text x="300" y="12" text-anchor="middle" font-size="11" fill="currentColor">Accuracy vs Sessions Ingested</text>
+        </svg>
+
+        <h3 class="text-lg font-semibold mb-2">Retrieval Latency Over Time</h3>
+        <svg viewBox="0 0 600 200" class="w-full max-w-2xl mb-6 bg-base-200 rounded-box p-2">
+          <For each={data().checkpoints}>
+            {(cp: any, i) => {
+              const x = () => 50 + (i() / (data().checkpoints.length - 1 || 1)) * 500;
+              const y = () => 180 - (cp.avg_retrieval_latency_ms / (maxLat() || 1)) * 160;
+              const nextCp = () => data().checkpoints[i() + 1];
+              return (
+                <>
+                  <circle cx={x()} cy={y()} r="4" fill="oklch(74% 0.16 232.661)" />
+                  <text x={x()} y={y() - 10} text-anchor="middle" font-size="10" fill="currentColor">
+                    {cp.avg_retrieval_latency_ms.toFixed(0)}ms
+                  </text>
+                  <Show when={nextCp()}>
+                    {(next) => {
+                      const nx = () => 50 + ((i() + 1) / (data().checkpoints.length - 1 || 1)) * 500;
+                      const ny = () => 180 - (next().avg_retrieval_latency_ms / (maxLat() || 1)) * 160;
+                      return <line x1={x()} y1={y()} x2={nx()} y2={ny()} stroke="oklch(74% 0.16 232.661)" stroke-width="2" />;
+                    }}
+                  </Show>
+                  <text x={x()} y={195} text-anchor="middle" font-size="9" fill="currentColor" opacity="0.5">
+                    {cp.sessions_ingested}
+                  </text>
+                </>
+              );
+            }}
+          </For>
+          <text x="300" y="12" text-anchor="middle" font-size="11" fill="currentColor">Latency (ms) vs Sessions Ingested</text>
+        </svg>
+
+        {/* Data table */}
+        <div class="overflow-x-auto">
+          <table class="table table-zebra table-sm">
+            <thead><tr><th>Sessions</th><th>Memories</th><th>Accuracy</th><th>Retrieval (ms)</th><th>Ingest (ms)</th></tr></thead>
+            <tbody>
+              <For each={data().checkpoints}>
+                {(cp: any) => (
+                  <tr>
+                    <td>{cp.sessions_ingested}</td>
+                    <td>{cp.estimated_memories}</td>
+                    <td><AccuracyBadge value={cp.accuracy} /></td>
+                    <td>{cp.avg_retrieval_latency_ms.toFixed(1)}</td>
+                    <td>{cp.avg_ingest_latency_ms.toFixed(1)}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
 // Main App
 const App: Component = () => {
-  const [view, setView] = createSignal<"dashboard" | "detail">("dashboard");
+  const [view, setView] = createSignal<"dashboard" | "detail" | "compare" | "longevity">("dashboard");
   const [selectedRun, setSelectedRun] = createSignal("");
 
   const showRun = (id: string) => {
@@ -308,6 +509,8 @@ const App: Component = () => {
         </div>
         <div class="navbar-end gap-2">
           <button class="btn btn-sm btn-ghost" onClick={showDashboard}>Dashboard</button>
+          <button class="btn btn-sm btn-ghost" onClick={() => setView("compare")}>Compare</button>
+          <button class="btn btn-sm btn-ghost" onClick={() => setView("longevity")}>Longevity</button>
           <ThemeSwitcher />
         </div>
       </div>
@@ -319,6 +522,12 @@ const App: Component = () => {
         </Show>
         <Show when={view() === "detail"}>
           <RunDetail runId={selectedRun()} onBack={showDashboard} />
+        </Show>
+        <Show when={view() === "compare"}>
+          <CompareView onBack={showDashboard} />
+        </Show>
+        <Show when={view() === "longevity"}>
+          <LongevityView onBack={showDashboard} />
         </Show>
       </main>
 
