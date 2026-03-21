@@ -13,7 +13,7 @@ rate_limit_rpm = 60
 # DeepInfra GPT-OSS-120B — use with --gen-model deepinfra
 [llm.deepinfra]
 base_url = "https://api.deepinfra.com/v1/openai"
-api_key_cmd = "op read 'op://Personal/DeepInfra/credential' 2>/dev/null || security find-generic-password -w -s 'DeepInfra' 2>/dev/null"
+api_key_cmd = "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"
 model = "openai/gpt-oss-120b"
 rate_limit_rpm = 120
 rate_limit_tpm = 0
