@@ -708,7 +708,7 @@ async fn cmd_budget_sweep(
 }
 
 async fn cmd_calibrate(judge_model: &str, cfg: &config::Config) -> Result<()> {
-    const CALIBRATION_JSON: &str = include_str!("../../calibration/longmemeval_50.json");
+    const CALIBRATION_JSON: &str = include_str!("../calibration/longmemeval_50.json");
     let pairs = judge::calibration::load_calibration_pairs(CALIBRATION_JSON)?;
     println!("Running calibration with {} pairs against {judge_model}...\n", pairs.len());
 
