@@ -58,8 +58,8 @@ impl DatasetRegistry {
         });
         self.datasets.insert("memoryagentbench".to_string(), DatasetInfo {
             name: "memoryagentbench".to_string(),
-            description: "MemoryAgentBench (ICLR 2026) — selective forgetting, fact consolidation".to_string(),
-            variants: vec!["default".to_string()],
+            description: "MemoryAgentBench (ICLR 2026) — selective forgetting, fact consolidation, long-range retrieval".to_string(),
+            variants: vec!["conflict_resolution".to_string(), "accurate_retrieval".to_string(), "long_range".to_string(), "test_time_learning".to_string()],
         });
         self.datasets.insert("halumem".to_string(), DatasetInfo {
             name: "halumem".to_string(),
@@ -119,12 +119,9 @@ impl DatasetRegistry {
                 Ok(Box::new(dataset))
             }
             "memoryagentbench" => {
-                anyhow::bail!(
-                    "MemoryAgentBench uses Parquet format. Export to JSON first:\n\
-                     pip install datasets\n\
-                     python -c \"from datasets import load_dataset; import json; ds = load_dataset('ai-hyz/MemoryAgentBench'); [open(f'mab_{{s}}.json','w').write(json.dumps(list(ds[s]))) for s in ds]\"\n\
-                     Then use: recallbench validate mab_Accurate_Retrieval.json"
-                )
+                let split = if variant == "default" { "conflict_resolution" } else { variant };
+                let dataset = mab::MemoryAgentBenchDataset::load(split).await?;
+                Ok(Box::new(dataset))
             }
             _ => anyhow::bail!("Unknown dataset: {name}. Run 'recallbench datasets' to see available datasets."),
         }
