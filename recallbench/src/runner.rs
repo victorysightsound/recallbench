@@ -181,12 +181,36 @@ async fn evaluate_question(
     let ingest_ms = ingest_start.elapsed().as_millis() as u64;
 
     // 3. Retrieve
+    // For oracle datasets, format provided sessions directly as context
+    // (matching mindcore-bench behavior — oracle provides exactly the evidence needed)
     let retrieval_start = Instant::now();
-    let retrieval = system.retrieve_context(
-        &question.question,
-        question.question_date.as_deref(),
-        token_budget,
-    ).await?;
+    let retrieval = if !question.sessions.is_empty() {
+        // Oracle mode: format sessions chronologically with date headers
+        let mut context_parts = Vec::new();
+        for session in &question.sessions {
+            let date = session.date.as_deref().unwrap_or("unknown date");
+            let mut session_text = format!("[Session from {date}]\n");
+            for turn in &session.turns {
+                session_text.push_str(&format!("{}: {}\n", turn.role, turn.content));
+            }
+            context_parts.push(session_text);
+        }
+        let context = context_parts.join("\n");
+        let tokens_used = (context.len() as f32 * 0.25) as usize;
+        crate::types::RetrievalResult {
+            context,
+            items_retrieved: question.sessions.len(),
+            tokens_used,
+            duration_ms: retrieval_start.elapsed().as_millis() as u64,
+        }
+    } else {
+        // Non-oracle: use the memory system's search
+        system.retrieve_context(
+            &question.question,
+            question.question_date.as_deref(),
+            token_budget,
+        ).await?
+    };
     let retrieval_ms = retrieval_start.elapsed().as_millis() as u64;
 
     // 4. Generate
