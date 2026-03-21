@@ -171,11 +171,11 @@ const RunCard: Component<{ run: RunSummary; onClick: () => void; onExpand: () =>
 
         {/* Compact: progress bar */}
         <div class="flex items-center gap-2 text-xs text-base-content/50">
-          <span>{props.run.total_correct}/{props.run.total_questions}{props.run.total_target ? `/${props.run.total_target}` : ""}</span>
+          <span>{props.run.total_correct}/{props.run.total_target || props.run.total_questions}</span>
           <div class="flex-1 bg-base-300 rounded-full h-1.5">
             <div
               class={`h-1.5 rounded-full transition-all ${props.run.accuracy >= 0.9 ? 'bg-success' : props.run.accuracy >= 0.7 ? 'bg-warning' : 'bg-error'}`}
-              style={{ width: props.run.total_target ? `${Math.round((props.run.total_questions / props.run.total_target) * 100)}%` : `${Math.round(props.run.accuracy * 100)}%` }}
+              style={{ width: props.run.total_target ? `${Math.round((props.run.total_questions / props.run.total_target) * 100)}%` : "100%" }}
             ></div>
           </div>
           <span>{(props.run.accuracy * 100).toFixed(1)}%</span>

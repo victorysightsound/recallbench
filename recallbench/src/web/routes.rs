@@ -131,8 +131,12 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
         .join("historical");
     scan_dir(&historical_dir, &mut runs);
 
-    // Sort newest first
-    runs.sort_by(|a, b| b.modified.cmp(&a.modified));
+    // Sort newest first — prefer started_at from meta, fall back to file modified time
+    runs.sort_by(|a, b| {
+        let a_time = a.started_at.as_deref().unwrap_or(&a.modified);
+        let b_time = b.started_at.as_deref().unwrap_or(&b.modified);
+        b_time.cmp(a_time)
+    });
 
     Json(runs)
 }
