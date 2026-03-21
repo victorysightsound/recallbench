@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.0.0 (Unreleased)
+## 0.1.0 (2026-03-20)
+
+Initial release.
 
 ### Features
 
@@ -20,4 +22,4 @@
 - Question-level resume with JSONL checkpoints
 - Web UI for browsing results locally
 - Configurable concurrency and rate limiting
-- Full CLI with 11 subcommands
+- Full CLI with 12 subcommands

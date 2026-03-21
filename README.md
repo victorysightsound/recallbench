@@ -87,9 +87,9 @@ recallbench run --system echo --dataset longmemeval --quick \
 
 ### Option 1: Implement the Rust trait
 
-```rust
-use recallbench::traits::MemorySystem;
+Add recallbench as a workspace member and implement the `MemorySystem` trait:
 
+```rust
 #[async_trait]
 impl MemorySystem for MySystem {
     fn name(&self) -> &str { "my-system" }
@@ -99,6 +99,8 @@ impl MemorySystem for MySystem {
     async fn retrieve_context(&self, query: &str, date: Option<&str>, budget: usize) -> Result<RetrievalResult> { /* search */ }
 }
 ```
+
+See `recallbench/src/systems/echo.rs` for a complete reference implementation.
 
 ### Option 2: HTTP adapter (any language)
 
@@ -146,6 +148,37 @@ recallbench longevity         Run longitudinal degradation test
 recallbench serve             Launch web UI
 ```
 
+## Custom Datasets
+
+Create a JSON file matching this schema:
+
+```json
+[
+  {
+    "id": "q001",
+    "question_type": "factual",
+    "question": "What is the user's favorite color?",
+    "ground_truth": ["blue"],
+    "sessions": [
+      {
+        "id": "session_1",
+        "date": "2024-01-15",
+        "turns": [
+          {"role": "user", "content": "My favorite color is blue"},
+          {"role": "assistant", "content": "Got it!"}
+        ]
+      }
+    ]
+  }
+]
+```
+
+Validate before running:
+
+```bash
+recallbench validate my-dataset.json
+```
+
 ## Configuration
 
 Create `recallbench.toml` in your project directory:
@@ -158,7 +191,41 @@ gen_model = "claude-sonnet"
 judge_model = "claude-sonnet"
 output_dir = "results"
 quick_size = 50
+
+[llm.anthropic]
+mode = "cli"           # "cli" (default) or "api"
+rate_limit_rpm = 60
+
+[llm.openai]
+mode = "cli"
+rate_limit_rpm = 60
+
+# Add custom OpenAI-compatible endpoints
+[llm.custom]
+base_url = "https://api.deepinfra.com/v1/openai"
+api_key_env = "DEEPINFRA_API_KEY"
+model = "meta-llama/Llama-3.1-70B-Instruct"
+rate_limit_rpm = 120
+
+[llm.local]
+base_url = "http://localhost:11434/v1"
+api_key_env = ""
+model = "llama3.1:70b"
+rate_limit_rpm = 0
 ```
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | Claude API key (only needed in API mode) |
+| `OPENAI_API_KEY` | OpenAI API key (only needed in API mode) |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Gemini API key (only needed in API mode) |
+| `RECALLBENCH_CONCURRENCY` | Override default concurrency |
+| `RECALLBENCH_TOKEN_BUDGET` | Override default token budget |
+| `RECALLBENCH_GEN_MODEL` | Override default generation model |
+| `RECALLBENCH_JUDGE_MODEL` | Override default judge model |
+| `RUST_LOG` | Control log verbosity (e.g., `RUST_LOG=debug`) |
 
 ## License
 
