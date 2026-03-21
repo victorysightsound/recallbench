@@ -4,6 +4,21 @@
 }
 
 /* RecallBench-specific overrides */
-.accuracy-good { color: oklch(76% 0.177 163.223); }   /* success green */
-.accuracy-mid { color: oklch(82% 0.189 84.429); }     /* warning yellow */
-.accuracy-bad { color: oklch(71% 0.194 13.428); }      /* error red */
+.accuracy-good { color: oklch(76% 0.177 163.223); }
+.accuracy-mid { color: oklch(82% 0.189 84.429); }
+.accuracy-bad { color: oklch(71% 0.194 13.428); }
+
+/* Prose styling for rendered markdown in dark themes */
+.prose { color: inherit; }
+.prose h1, .prose h2, .prose h3, .prose h4 { color: inherit; font-weight: 600; margin-top: 0.75em; margin-bottom: 0.25em; }
+.prose h2 { font-size: 1.1em; }
+.prose h3 { font-size: 1em; }
+.prose p { margin: 0.4em 0; }
+.prose strong { color: inherit; font-weight: 700; }
+.prose em { color: inherit; }
+.prose ul, .prose ol { margin: 0.4em 0; padding-left: 1.5em; }
+.prose li { margin: 0.15em 0; }
+.prose code { background: oklch(20% 0 0); padding: 0.1em 0.3em; border-radius: 0.25em; font-size: 0.9em; }
+.prose table { border-collapse: collapse; margin: 0.5em 0; }
+.prose th, .prose td { border: 1px solid oklch(30% 0 0); padding: 0.25em 0.5em; font-size: 0.85em; }
+.prose blockquote { border-left: 3px solid oklch(40% 0 0); padding-left: 0.75em; margin: 0.4em 0; opacity: 0.8; }

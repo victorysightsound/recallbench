@@ -1,5 +1,6 @@
 import { createSignal, createResource, For, Show, Component, onCleanup } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { marked } from "marked";
 
 interface RunSummary {
   id: string;
@@ -110,6 +111,12 @@ const formatElapsed = (ms: number) => {
   if (m < 60) return `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
+};
+
+/** Render markdown string as formatted HTML */
+const Markdown: Component<{ text: string }> = (props) => {
+  const html = () => marked.parse(props.text || "", { async: false }) as string;
+  return <div class="prose prose-sm max-w-none" innerHTML={html()} />;
 };
 
 const formatTokens = (n: number) =>
@@ -515,12 +522,14 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
                               <div class="space-y-3 text-sm">
                                 <div>
                                   <span class="font-semibold text-base-content/70">Ground Truth:</span>
-                                  <p class="mt-1 whitespace-pre-wrap">{stripMd(q.ground_truth)}</p>
+                                  <p class="mt-1">{q.ground_truth}</p>
                                 </div>
                                 <div class="divider my-1"></div>
                                 <div>
                                   <span class="font-semibold text-base-content/70">Model Response:</span>
-                                  <p class="mt-1 whitespace-pre-wrap">{stripMd(q.hypothesis)}</p>
+                                  <div class="mt-1">
+                                    <Markdown text={q.hypothesis} />
+                                  </div>
                                 </div>
                               </div>
                             </td>
