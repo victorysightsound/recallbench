@@ -108,6 +108,9 @@ enum Commands {
         /// Budget sweep: run at multiple token budgets
         #[arg(long)]
         budget_sweep: bool,
+        /// Note describing the purpose of this run
+        #[arg(long)]
+        note: Option<String>,
     },
 
     /// Compare multiple systems
@@ -200,6 +203,15 @@ enum Commands {
         type_filter: Option<String>,
     },
 
+    /// Add or update a note on an existing run
+    Annotate {
+        /// Path to results file
+        path: PathBuf,
+        /// Note text to add
+        #[arg(long)]
+        note: String,
+    },
+
     /// Launch local web UI to browse results
     Serve {
         /// Port to listen on
@@ -247,7 +259,7 @@ async fn main() -> Result<()> {
             system, system_config, dataset, variant,
             concurrency, budget, gen_model, judge_model,
             output, seed: _seed, filter, resume,
-            quick, quick_size, stress, budget_sweep,
+            quick, quick_size, stress, budget_sweep, note,
         } => {
             let system_name = system.as_deref().unwrap_or("echo");
             let gen_m = gen_model.as_deref().unwrap_or(&cfg.defaults.gen_model);
@@ -281,7 +293,7 @@ async fn main() -> Result<()> {
                 cmd_run(
                     system_name, system_config.as_deref(),
                     &dataset, &variant, conc, bgt,
-                    gen_m, jdg, &out, filter_types, resume, qsize, &cfg,
+                    gen_m, jdg, &out, filter_types, resume, qsize, note, &cfg,
                 ).await
             }
         }
@@ -331,6 +343,19 @@ async fn main() -> Result<()> {
                 println!("Results written to {}", out_path.display());
             }
 
+            Ok(())
+        }
+        Commands::Annotate { path, note } => {
+            let meta_path = path.with_extension("meta.json");
+            let mut meta: serde_json::Value = if meta_path.exists() {
+                let content = std::fs::read_to_string(&meta_path)?;
+                serde_json::from_str(&content)?
+            } else {
+                serde_json::json!({})
+            };
+            meta["note"] = serde_json::Value::String(note.clone());
+            std::fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)?;
+            println!("Note updated on {}", meta_path.display());
             Ok(())
         }
         Commands::Serve { port, results_dir } => {
@@ -492,6 +517,7 @@ async fn cmd_run(
     filter_types: Option<Vec<String>>,
     do_resume: bool,
     quick_size: Option<usize>,
+    note: Option<String>,
     cfg: &config::Config,
 ) -> Result<()> {
     // Create output directory
@@ -533,6 +559,7 @@ async fn cmd_run(
         filter_types,
         resume: do_resume,
         quick_size,
+        note,
     };
 
     let results = runner::run_benchmark(
@@ -631,6 +658,7 @@ async fn cmd_stress(
             filter_types: None,
             resume: false,
             quick_size,
+        note: None,
         };
 
         let results = runner::run_benchmark(
@@ -695,6 +723,7 @@ async fn cmd_budget_sweep(
             filter_types: None,
             resume: false,
             quick_size,
+        note: None,
         };
 
         let results = runner::run_benchmark(
@@ -798,6 +827,7 @@ async fn cmd_compare(
             filter_types: None,
             resume: false,
             quick_size: None,
+            note: None,
         };
 
         println!("\nBenchmarking {sys_name} ...");
