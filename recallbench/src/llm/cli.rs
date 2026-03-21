@@ -129,7 +129,7 @@ mod tests {
         let args = client.build_args(1024);
         assert!(args.contains(&"--print".to_string()));
         assert!(args.contains(&"--model".to_string()));
-        assert!(args.contains(&"claude-sonnet".to_string()));
+        assert!(args.contains(&"sonnet".to_string())); // claude-sonnet maps to sonnet
     }
 
     #[test]
