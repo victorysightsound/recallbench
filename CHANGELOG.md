@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 (2026-03-20)
+
+Production-ready release. All alpha gaps resolved.
+
+### Added
+- `compare` subcommand — run multiple systems side-by-side with comparative tables
+- `lib.rs` library target — external crates can now depend on recallbench to implement MemorySystem
+- Custom/local OpenAI-compatible endpoint resolution via `--gen-model custom` and `--gen-model local`
+- Stage-level checkpointing (`.checkpoints/` directory) for resuming from any pipeline stage
+- Named adapter crates: recallbench-mindcore, recallbench-mem0, recallbench-omega, recallbench-zep
+- `create_llm_client()` helper resolving provider from model string and config
+
+### Fixed
+- `compare` subcommand was a stub — now fully functional
+- Custom endpoint config parsing (replaced broken `serde(flatten)` with explicit `custom`/`local` fields)
+- Dead code warnings suppressed properly
+
 ## 0.1.0 (2026-03-20)
 
 Initial release.
