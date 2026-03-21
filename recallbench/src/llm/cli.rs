@@ -26,13 +26,18 @@ impl CliLLMClient {
     fn build_args(&self, _max_tokens: usize) -> Vec<String> {
         match self.command.as_str() {
             "claude" => {
-                vec![
-                    "--print".to_string(),
-                    "--model".to_string(),
-                    self.model.clone(),
-                    "--max-turns".to_string(),
-                    "1".to_string(),
-                ]
+                let mut args = vec!["--print".to_string()];
+                // Only pass --model if it's a specific model ID, not a shorthand
+                let model = match self.model.as_str() {
+                    "claude-sonnet" => "sonnet",
+                    "claude-opus" => "opus",
+                    "claude-haiku" => "haiku",
+                    other => other,
+                };
+                if model != "claude-sonnet" {
+                    args.extend(["--model".to_string(), model.to_string()]);
+                }
+                args
             }
             "chatgpt" => {
                 vec![
@@ -72,6 +77,8 @@ impl LLMClient for CliLLMClient {
         let args = self.build_args(max_tokens);
 
         let mut cmd = tokio::process::Command::new(&self.command);
+        // Signal to hooks that this is a benchmark subprocess, not an interactive session
+        cmd.env("RECALLBENCH_SUBPROCESS", "1");
         cmd.args(&args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
