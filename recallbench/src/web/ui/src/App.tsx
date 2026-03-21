@@ -18,6 +18,9 @@ interface RunSummary {
   dataset: string | null;
   variant: string | null;
   started_at: string | null;
+  note: string | null;
+  gen_model: string | null;
+  judge_model: string | null;
 }
 
 interface Metrics {
@@ -368,6 +371,35 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
       </div>
 
       <h2 class="text-2xl font-bold mb-2">{humanizeName(props.runId)}</h2>
+
+      {/* Run notes */}
+      <Show when={runInfo()}>
+        {(info) => (
+          <Show when={info().note || info().gen_model}>
+            <div class="bg-base-200 rounded-box p-4 mb-4 text-sm space-y-1">
+              <Show when={info().note}>
+                <p class="text-base-content/80">{info().note}</p>
+              </Show>
+              <Show when={info().gen_model || info().judge_model || info().dataset}>
+                <div class="flex flex-wrap gap-3 text-xs text-base-content/50 mt-2">
+                  <Show when={info().dataset}>
+                    <span>Dataset: <strong class="text-base-content/70">{info().dataset} ({info().variant})</strong></span>
+                  </Show>
+                  <Show when={info().gen_model}>
+                    <span>Gen: <strong class="text-base-content/70">{info().gen_model}</strong></span>
+                  </Show>
+                  <Show when={info().judge_model}>
+                    <span>Judge: <strong class="text-base-content/70">{info().judge_model}</strong></span>
+                  </Show>
+                  <Show when={info().started_at}>
+                    <span>Run: <strong class="text-base-content/70">{formatDate(info().started_at!)}</strong></span>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+          </Show>
+        )}
+      </Show>
 
       {/* Overall progress bar */}
       <Show when={metrics()}>
