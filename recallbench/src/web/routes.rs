@@ -41,10 +41,13 @@ struct RunSummary {
     estimated_cost: f64,
     tokens_in: u64,
     modified: String,
-    total_target: Option<usize>,  // total questions in the run (from meta file)
+    total_target: Option<usize>,
     dataset: Option<String>,
     variant: Option<String>,
     started_at: Option<String>,
+    note: Option<String>,
+    gen_model: Option<String>,
+    judge_model: Option<String>,
 }
 
 fn scan_dir(dir: &std::path::Path, runs: &mut Vec<RunSummary>) {
@@ -95,6 +98,9 @@ fn scan_dir(dir: &std::path::Path, runs: &mut Vec<RunSummary>) {
                             dataset: meta.as_ref().and_then(|m| m["dataset"].as_str().map(|s| s.to_string())),
                             variant: meta.as_ref().and_then(|m| m["variant"].as_str().map(|s| s.to_string())),
                             started_at: meta.as_ref().and_then(|m| m["started_at"].as_str().map(|s| s.to_string())),
+                            note: meta.as_ref().and_then(|m| m["note"].as_str().map(|s| s.to_string())),
+                            gen_model: meta.as_ref().and_then(|m| m["gen_model"].as_str().map(|s| s.to_string())),
+                            judge_model: meta.as_ref().and_then(|m| m["judge_model"].as_str().map(|s| s.to_string())),
                         });
                     }
                 }
