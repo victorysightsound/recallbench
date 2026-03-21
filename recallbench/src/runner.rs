@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -154,7 +153,7 @@ pub async fn run_benchmark(
 
     // If resuming, merge with previously completed results
     if config.resume && !completed_ids.is_empty() {
-        let mut all_results = resume::load_results(&config.output_path)?;
+        let all_results = resume::load_results(&config.output_path)?;
         // Results already appended to file, so load_results has everything
         return Ok(all_results);
     }
