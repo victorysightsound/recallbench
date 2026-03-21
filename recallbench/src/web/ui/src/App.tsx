@@ -11,6 +11,7 @@ interface RunSummary {
   total_correct: number;
   estimated_cost: number;
   tokens_in: number;
+  modified: string;
 }
 
 interface Metrics {
@@ -92,6 +93,9 @@ const AccuracyBadge: Component<{ value: number; size?: string }> = (props) => {
   );
 };
 
+const formatTokens = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : `${n}`;
+
 const RunCard: Component<{ run: RunSummary; onClick: () => void }> = (props) => {
   const accClass = () =>
     props.run.accuracy >= 0.9 ? "text-success" : props.run.accuracy >= 0.7 ? "text-warning" : "text-error";
@@ -102,39 +106,49 @@ const RunCard: Component<{ run: RunSummary; onClick: () => void }> = (props) => 
       class="card bg-base-200 shadow-md hover:shadow-lg hover:border-primary border border-base-300 cursor-pointer transition-all"
       onClick={props.onClick}
     >
-      <div class="card-body p-4 gap-2">
-        <div class="flex justify-between items-start">
-          <h3 class="card-title text-base">{props.run.system || "Unknown"}</h3>
-          <span class="text-xs text-base-content/40">{props.run.filename}</span>
+      <div class="card-body p-5 gap-3">
+        {/* Header */}
+        <div class="flex justify-between items-center">
+          <h3 class="card-title text-lg">{props.run.system || "Unknown"}</h3>
+          <span class="badge badge-ghost badge-sm">{props.run.filename}</span>
         </div>
 
-        {/* Overall scores */}
-        <div class="flex gap-4 items-baseline">
+        <div class="divider my-0"></div>
+
+        {/* Score summary */}
+        <div class="grid grid-cols-3 gap-3 text-center">
           <div>
-            <span class="text-xs text-base-content/50">Overall</span>
-            <p class={`text-2xl font-bold ${accClass()}`}>{(props.run.accuracy * 100).toFixed(1)}%</p>
+            <div class="text-xs text-base-content/50 uppercase">Overall</div>
+            <div class={`text-xl font-bold ${accClass()}`}>{(props.run.accuracy * 100).toFixed(1)}%</div>
           </div>
           <div>
-            <span class="text-xs text-base-content/50">Task-Avg</span>
-            <p class={`text-2xl font-bold ${accClass()}`}>{(props.run.task_averaged * 100).toFixed(1)}%</p>
+            <div class="text-xs text-base-content/50 uppercase">Task-Avg</div>
+            <div class={`text-xl font-bold ${accClass()}`}>{(props.run.task_averaged * 100).toFixed(1)}%</div>
           </div>
           <div>
-            <span class="text-xs text-base-content/50">Progress</span>
-            <p class="text-lg font-semibold">{props.run.total_correct}/{props.run.total_questions}</p>
+            <div class="text-xs text-base-content/50 uppercase">Progress</div>
+            <div class="text-xl font-bold">{props.run.total_correct}<span class="text-sm text-base-content/40">/{props.run.total_questions}</span></div>
           </div>
         </div>
 
         {/* Per-type breakdown */}
         <Show when={types().length > 0}>
-          <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs mt-1">
+          <div class="divider my-0"></div>
+          <div class="space-y-1.5">
             <For each={types()}>
               {([type, [correct, total]]) => {
                 const pct = total > 0 ? correct / total : 0;
                 const cls = pct >= 0.95 ? "text-success" : pct >= 0.85 ? "text-warning" : "text-error";
+                const barWidth = `${Math.round(pct * 100)}%`;
                 return (
-                  <div class="flex justify-between">
-                    <span class="text-base-content/60 truncate">{type}</span>
-                    <span class={cls}>{correct}/{total} ({(pct * 100).toFixed(0)}%)</span>
+                  <div>
+                    <div class="flex justify-between text-xs mb-0.5">
+                      <span class="text-base-content/60">{type}</span>
+                      <span class={cls}>{correct}/{total} ({(pct * 100).toFixed(0)}%)</span>
+                    </div>
+                    <div class="w-full bg-base-300 rounded-full h-1">
+                      <div class={`h-1 rounded-full ${pct >= 0.95 ? 'bg-success' : pct >= 0.85 ? 'bg-warning' : 'bg-error'}`} style={{ width: barWidth }}></div>
+                    </div>
                   </div>
                 );
               }}
@@ -142,10 +156,11 @@ const RunCard: Component<{ run: RunSummary; onClick: () => void }> = (props) => 
           </div>
         </Show>
 
-        {/* Cost */}
-        <div class="flex gap-4 text-xs text-base-content/40 mt-1">
-          <span>Tokens: {props.run.tokens_in > 1000000 ? `${(props.run.tokens_in / 1000000).toFixed(1)}M` : props.run.tokens_in > 1000 ? `${(props.run.tokens_in / 1000).toFixed(0)}K` : props.run.tokens_in}</span>
-          <span>Est. ${props.run.estimated_cost.toFixed(2)}</span>
+        {/* Footer: tokens & cost */}
+        <div class="divider my-0"></div>
+        <div class="flex justify-between text-xs text-base-content/40">
+          <span>Tokens: {formatTokens(props.run.tokens_in)}</span>
+          <span>Est. cost: ${props.run.estimated_cost.toFixed(2)}</span>
         </div>
       </div>
     </div>
@@ -190,7 +205,7 @@ const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
             </div>
           }
         >
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <For each={runs()}>
               {(run) => <RunCard run={run} onClick={() => props.onSelectRun(run.id)} />}
             </For>

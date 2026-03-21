@@ -36,10 +36,11 @@ struct RunSummary {
     total_questions: usize,
     accuracy: f64,
     task_averaged: f64,
-    per_type: std::collections::HashMap<String, (usize, usize)>,  // type -> (correct, total)
+    per_type: std::collections::HashMap<String, (usize, usize)>,
     total_correct: usize,
     estimated_cost: f64,
     tokens_in: u64,
+    modified: String,  // ISO timestamp for sorting
 }
 
 async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> {
@@ -62,6 +63,14 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
                             if r.is_correct { entry.0 += 1; }
                         }
 
+                        let modified = std::fs::metadata(&path)
+                            .and_then(|m| m.modified())
+                            .map(|t| {
+                                let dt: chrono::DateTime<chrono::Utc> = t.into();
+                                dt.to_rfc3339()
+                            })
+                            .unwrap_or_default();
+
                         runs.push(RunSummary {
                             id: path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
                             filename: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
@@ -73,12 +82,16 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
                             total_correct: acc.total_correct,
                             estimated_cost: cost.estimated_cost_usd,
                             tokens_in: cost.total_tokens_in,
+                            modified,
                         });
                     }
                 }
             }
         }
     }
+
+    // Sort newest first
+    runs.sort_by(|a, b| b.modified.cmp(&a.modified));
 
     Json(runs)
 }
