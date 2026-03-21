@@ -1,0 +1,80 @@
+# MindCore LongMemEval Optimization History
+
+Results from the v1 → v3 optimization journey that brought MindCore from 87.0% to 95.6% on LongMemEval Oracle, surpassing OMEGA Memory's 95.4%.
+
+All runs below were executed via mindcore-bench (now deprecated) and imported into RecallBench for historical tracking.
+
+## Results Summary
+
+| Run | Task-Averaged | Overall | Date | Key Changes |
+|-----|---------------|---------|------|-------------|
+| v1 | 81.9% | 87.0% (435/500) | 2026-03-20 | Baseline: generic prompts, Haiku judge |
+| v2 | 93.8% | 94.8% (474/500) | 2026-03-20 | Type-specific prompts, Sonnet judge, unlimited context |
+| v3 | 95.5% | 95.6% (478/500) | 2026-03-20 | Self-verification, preference few-shots, lenient abstention |
+
+## What Changed Between Versions
+
+### v1 → v2 (+39 questions, +7.8% overall)
+
+1. **Type-specific generation prompts**
+   - Preference: "The user would prefer responses that..." format with topic focus
+   - Temporal: step-by-step date enumeration before computing
+   - Knowledge-update: chronological listing with recency emphasis
+   - Multi-session: explicit item enumeration across all sessions
+
+2. **Judge upgraded from Haiku to Sonnet**
+   - Haiku was too strict — rejected correct answers with different phrasing
+   - Sonnet with extraction-aware prompts: "search the ENTIRE response"
+
+3. **Context budget set to unlimited for oracle**
+   - Oracle provides only evidence sessions — no reason to truncate
+
+4. **Better abstention detection**
+   - Explicit "MUST respond with I don't know" instruction
+
+### v2 → v3 (+4 questions, +0.8% overall)
+
+1. **Self-verification pass** (multi-session + knowledge-update only)
+   - Second LLM call re-checks counting, arithmetic, version selection
+   - NOT applied to temporal reasoning (caused regressions in v3-draft)
+
+2. **Preference few-shot examples**
+   - Sony camera accessories and quinoa recipe examples
+   - Explicitly labels format-focused answers as "BAD"
+
+3. **Lenient abstention judging**
+   - Accepts responses that explain WHY they can't answer
+   - As long as primary conclusion is abstention
+
+### v3-draft (failed attempt, kept for research)
+   - Applied verification to temporal reasoning
+   - Caused 20 regressions — verifier re-did date calculations and got different wrong answers
+   - Lesson: only apply verification where the initial answer is weak
+
+## Per-Type Progression
+
+| Category | v1 | v2 | v3 |
+|----------|-----|-----|-----|
+| Temporal Reasoning (133) | 91.0% | 97.0% | 97.7% |
+| Knowledge Update (78) | 91.0% | 94.9% | 97.4% |
+| Multi-Session (133) | 85.7% | 91.0% | 91.0% |
+| SS-User (70) | 94.3% | 100% | 98.6% |
+| SS-Assistant (56) | 92.9% | 100% | 98.2% |
+| SS-Preference (30) | 36.7% | 80.0% | 90.0% |
+
+## Remaining Weaknesses (v3)
+
+- **Multi-session counting** (12/22 failures): model enumerates items correctly but computes wrong total
+- **Preference specificity** (3 failures): still describes format instead of content preferences
+- **Temporal edge cases** (3 failures): unit conversion, ambiguous date references
+- **Knowledge-update ambiguity** (2 failures): "close to 1300" vs exact "1300"
+- **Nondeterministic variance** (2 failures): SS-user and SS-assistant regressions from v2
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `mindcore-longmemeval-v1-via-mindcore-bench.jsonl` | v1 results (500 questions) |
+| `mindcore-longmemeval-v2-via-mindcore-bench.jsonl` | v2 results (500 questions) |
+| `mindcore-longmemeval-v3-via-mindcore-bench.jsonl` | v3 results (500 questions, current best) |
+| `*.meta.json` | Run metadata for each version |

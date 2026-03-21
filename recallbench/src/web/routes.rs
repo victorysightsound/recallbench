@@ -47,10 +47,8 @@ struct RunSummary {
     started_at: Option<String>,
 }
 
-async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> {
-    let mut runs = Vec::new();
-
-    if let Ok(entries) = std::fs::read_dir(&state.results_dir) {
+fn scan_dir(dir: &std::path::Path, runs: &mut Vec<RunSummary>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "jsonl") {
@@ -103,6 +101,35 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
             }
         }
     }
+}
+
+/// Find a JSONL file by ID in results/ or historical/
+fn find_results_file(state: &AppState, id: &str) -> std::path::PathBuf {
+    let primary = state.results_dir.join(format!("{id}.jsonl"));
+    if primary.exists() {
+        return primary;
+    }
+    let historical = state.results_dir.parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("historical")
+        .join(format!("{id}.jsonl"));
+    if historical.exists() {
+        return historical;
+    }
+    primary // fallback
+}
+
+async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> {
+    let mut runs = Vec::new();
+
+    // Scan results directory
+    scan_dir(&state.results_dir, &mut runs);
+
+    // Also scan historical/ directory (sibling to results/)
+    let historical_dir = state.results_dir.parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("historical");
+    scan_dir(&historical_dir, &mut runs);
 
     // Sort newest first
     runs.sort_by(|a, b| b.modified.cmp(&a.modified));
@@ -114,7 +141,7 @@ async fn get_run(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    let path = state.results_dir.join(format!("{id}.jsonl"));
+    let path = find_results_file(&state, &id);
     match resume::load_results(&path) {
         Ok(results) => Json(serde_json::to_value(&results).unwrap_or_default()),
         Err(_) => Json(serde_json::json!({"error": "Run not found"})),
@@ -125,7 +152,7 @@ async fn get_run_metrics(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    let path = state.results_dir.join(format!("{id}.jsonl"));
+    let path = find_results_file(&state, &id);
     match resume::load_results(&path) {
         Ok(results) => {
             let acc = metrics::compute_accuracy(&results);
@@ -161,7 +188,7 @@ async fn get_run_questions(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    let path = state.results_dir.join(format!("{id}.jsonl"));
+    let path = find_results_file(&state, &id);
     match resume::load_results(&path) {
         Ok(results) => Json(serde_json::to_value(&results).unwrap_or_default()),
         Err(_) => Json(serde_json::json!({"error": "Run not found"})),
@@ -172,7 +199,7 @@ async fn get_run_failures(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
-    let path = state.results_dir.join(format!("{id}.jsonl"));
+    let path = find_results_file(&state, &id);
     match resume::load_results(&path) {
         Ok(results) => {
             let analysis = report::failure::analyze_failures(&results);
