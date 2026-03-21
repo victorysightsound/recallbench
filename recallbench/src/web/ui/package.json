@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "marked": "^17.0.5",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
