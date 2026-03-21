@@ -197,11 +197,15 @@ async fn evaluate_question(
     let ingest_ms = ingest_start.elapsed().as_millis() as u64;
 
     // 3. Retrieve
-    // For oracle datasets, format provided sessions directly as context
-    // (matching mindcore-bench behavior — oracle provides exactly the evidence needed)
     let retrieval_start = Instant::now();
-    let retrieval = if !question.sessions.is_empty() {
-        // Oracle mode: format sessions chronologically with date headers
+    let estimated_tokens = question.sessions.iter()
+        .flat_map(|s| &s.turns)
+        .map(|t| (t.content.len() as f32 * 0.25) as usize)
+        .sum::<usize>();
+
+    let retrieval = if token_budget == 0 || estimated_tokens <= token_budget {
+        // Oracle mode (or small context): format all sessions directly
+        // All provided context fits in budget — no search needed
         let mut context_parts = Vec::new();
         for session in &question.sessions {
             let date = session.date.as_deref().unwrap_or("unknown date");
@@ -220,7 +224,7 @@ async fn evaluate_question(
             duration_ms: retrieval_start.elapsed().as_millis() as u64,
         }
     } else {
-        // Non-oracle: use the memory system's search
+        // S/M variant: context exceeds budget, use memory system's search to find relevant content
         system.retrieve_context(
             &question.question,
             question.question_date.as_deref(),

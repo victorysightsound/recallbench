@@ -10,8 +10,8 @@ quick_size = 50
 mode = "cli"
 rate_limit_rpm = 60
 
-# DeepInfra GPT-OSS-120B — use with --gen-model custom or --judge-model custom
-[llm.custom]
+# DeepInfra GPT-OSS-120B — use with --gen-model deepinfra
+[llm.deepinfra]
 base_url = "https://api.deepinfra.com/v1/openai"
 api_key_cmd = "op read 'op://Personal/DeepInfra/credential' 2>/dev/null || security find-generic-password -w -s 'DeepInfra' 2>/dev/null"
 model = "openai/gpt-oss-120b"
