@@ -497,9 +497,9 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
 
       <Show when={questionsOpen()}>
         <Show when={questions().length > 0} fallback={<div class="skeleton h-24 w-full" />}>
-          <div class="overflow-hidden w-full">
+          <div class="overflow-y-auto max-h-[60vh] w-full border border-base-300 rounded-box">
             <table class="table table-zebra table-sm table-fixed w-full">
-              <thead>
+              <thead class="sticky top-0 bg-base-200 z-10">
                 <tr>
                   <th class="w-[12%]">ID</th>
                   <th class="w-[14%]">Type</th>
