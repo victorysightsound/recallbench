@@ -299,6 +299,8 @@ async fn main() -> Result<()> {
 
             let mem_system: Box<dyn traits::MemorySystem> = match system.as_str() {
                 "echo" => Box::new(systems::echo::EchoSystem::new()),
+                #[cfg(feature = "mindcore")]
+                "mindcore" => Box::new(recallbench_mindcore::MindCoreAdapter::new()?),
                 _ => anyhow::bail!("Unknown system: {system}"),
             };
 
@@ -512,6 +514,8 @@ async fn cmd_run(
     } else {
         match system_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
+            #[cfg(feature = "mindcore-adapter")]
+            "mindcore" => Box::new(systems::mindcore_adapter::MindCoreAdapter::new()?),
             _ => anyhow::bail!("Unknown system: {system_name}. Use --system-config for custom systems."),
         }
     };
@@ -607,6 +611,8 @@ async fn cmd_stress(
 
     let system: Box<dyn traits::MemorySystem> = match system_name {
         "echo" => Box::new(systems::echo::EchoSystem::new()),
+        #[cfg(feature = "mindcore")]
+        "mindcore" => Box::new(recallbench_mindcore::MindCoreAdapter::new()?),
         _ => anyhow::bail!("Unknown system: {system_name}"),
     };
 
@@ -669,6 +675,8 @@ async fn cmd_budget_sweep(
 
     let system: Box<dyn traits::MemorySystem> = match system_name {
         "echo" => Box::new(systems::echo::EchoSystem::new()),
+        #[cfg(feature = "mindcore")]
+        "mindcore" => Box::new(recallbench_mindcore::MindCoreAdapter::new()?),
         _ => anyhow::bail!("Unknown system: {system_name}"),
     };
 
@@ -767,6 +775,11 @@ async fn cmd_compare(
     for sys_name in &system_names {
         let system: Box<dyn traits::MemorySystem> = match *sys_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
+            #[cfg(feature = "mindcore-adapter")]
+            "mindcore" => match systems::mindcore_adapter::MindCoreAdapter::new() {
+                Ok(a) => Box::new(a),
+                Err(e) => { tracing::error!("Failed to create MindCore adapter: {e}"); continue; }
+            },
             _ => {
                 tracing::warn!("Unknown system '{sys_name}', skipping.");
                 continue;
