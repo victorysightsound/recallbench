@@ -787,18 +787,35 @@ const LongevityView: Component<{ onBack: () => void }> = (props) => {
 
 // Main App
 const App: Component = () => {
-  const [view, setView] = createSignal<"dashboard" | "detail" | "compare" | "longevity">("dashboard");
+  const [view, setViewRaw] = createSignal<"dashboard" | "detail" | "compare" | "longevity">("dashboard");
   const [selectedRun, setSelectedRun] = createSignal("");
 
-  const showRun = (id: string) => {
-    setSelectedRun(id);
-    setView("detail");
+  // Navigate with browser history support
+  const navigate = (newView: typeof view extends () => infer T ? T : never, runId?: string) => {
+    if (runId !== undefined) setSelectedRun(runId);
+    setViewRaw(newView);
+    const url = newView === "dashboard" ? "/" : newView === "detail" ? `/run/${runId || selectedRun()}` : `/${newView}`;
+    window.history.pushState({ view: newView, runId: runId || selectedRun() }, "", url);
   };
 
-  const showDashboard = () => {
-    setView("dashboard");
-    setSelectedRun("");
-  };
+  const showRun = (id: string) => navigate("detail", id);
+  const showDashboard = () => navigate("dashboard", "");
+
+  // Handle browser back/forward
+  window.addEventListener("popstate", (e) => {
+    const state = e.state;
+    if (state?.view) {
+      setViewRaw(state.view);
+      if (state.runId) setSelectedRun(state.runId);
+      else setSelectedRun("");
+    } else {
+      setViewRaw("dashboard");
+      setSelectedRun("");
+    }
+  });
+
+  // Set initial history state
+  window.history.replaceState({ view: "dashboard", runId: "" }, "", "/");
 
   return (
     <div class="bg-base-100 text-base-content min-h-screen flex flex-col">
@@ -812,8 +829,8 @@ const App: Component = () => {
         </div>
         <div class="navbar-end gap-2">
           <button class="btn btn-sm btn-ghost" onClick={showDashboard}>Dashboard</button>
-          <button class="btn btn-sm btn-ghost" onClick={() => setView("compare")}>Compare</button>
-          <button class="btn btn-sm btn-ghost" onClick={() => setView("longevity")}>Longevity</button>
+          <button class="btn btn-sm btn-ghost" onClick={() => navigate("compare")}>Compare</button>
+          <button class="btn btn-sm btn-ghost" onClick={() => navigate("longevity")}>Longevity</button>
           <ThemeSwitcher />
         </div>
       </div>

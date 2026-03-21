@@ -61,4 +61,8 @@ fn static_routes() -> Router {
     Router::new()
         .route("/", get(serve_index))
         .route("/static/{*path}", get(serve_static))
+        // Serve index.html for all SPA routes so browser back/forward and deep links work
+        .route("/run/{*path}", get(serve_index))
+        .route("/compare", get(serve_index))
+        .route("/longevity", get(serve_index))
 }
