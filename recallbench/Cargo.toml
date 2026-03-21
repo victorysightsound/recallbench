@@ -35,6 +35,11 @@ dirs = { workspace = true }
 futures-util = { workspace = true }
 which = { workspace = true }
 open = { workspace = true }
+mindcore = { path = "../../mindcore", optional = true }
+
+[features]
+default = ["mindcore-adapter"]
+mindcore-adapter = ["dep:mindcore"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

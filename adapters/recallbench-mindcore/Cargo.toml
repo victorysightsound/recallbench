@@ -11,4 +11,6 @@ mindcore = { path = "../../../mindcore" }
 anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
