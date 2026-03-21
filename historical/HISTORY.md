@@ -72,9 +72,25 @@ All runs below were executed via mindcore-bench (now deprecated) and imported in
 
 ## Files
 
+### Results (JSONL)
 | File | Description |
 |------|-------------|
-| `mindcore-longmemeval-v1-via-mindcore-bench.jsonl` | v1 results (500 questions) |
-| `mindcore-longmemeval-v2-via-mindcore-bench.jsonl` | v2 results (500 questions) |
-| `mindcore-longmemeval-v3-via-mindcore-bench.jsonl` | v3 results (500 questions, current best) |
+| `mindcore-longmemeval-v1-via-mindcore-bench.jsonl` | v1 results (500 questions, 87.0%) |
+| `mindcore-longmemeval-v2-via-mindcore-bench.jsonl` | v2 results (500 questions, 94.8%) |
+| `mindcore-longmemeval-v3-via-mindcore-bench.jsonl` | v3 results (500 questions, 95.6% — current best) |
+| `mindcore-longmemeval-v3-draft-via-mindcore-bench.jsonl` | v3-draft results (500 questions, 92.4% — failed temporal verification, kept for research) |
 | `*.meta.json` | Run metadata for each version |
+
+### Runtime Logs
+| File | Description |
+|------|-------------|
+| `mindcore-v1-runtime.log` | v1 runtime log with per-question processing details |
+| `mindcore-v2-runtime.log` | v2 runtime log |
+| `mindcore-v3-draft-runtime.log` | v3-draft runtime log (temporal verification attempt) |
+| `mindcore-v3-runtime.log` | v3 runtime log |
+
+### Analysis Documents
+| File | Description |
+|------|-------------|
+| `BENCHMARK_PROGRESS.md` | Full analysis: competitive landscape, per-question failure analysis, root causes, prompt engineering reference, v3-draft lessons learned |
+| `HISTORY.md` | This file — summary of optimization journey |
