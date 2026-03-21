@@ -40,7 +40,11 @@ struct RunSummary {
     total_correct: usize,
     estimated_cost: f64,
     tokens_in: u64,
-    modified: String,  // ISO timestamp for sorting
+    modified: String,
+    total_target: Option<usize>,  // total questions in the run (from meta file)
+    dataset: Option<String>,
+    variant: Option<String>,
+    started_at: Option<String>,
 }
 
 async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> {
@@ -71,6 +75,12 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
                             })
                             .unwrap_or_default();
 
+                        // Read run metadata if available
+                        let meta_path = path.with_extension("meta.json");
+                        let meta: Option<serde_json::Value> = std::fs::read_to_string(&meta_path)
+                            .ok()
+                            .and_then(|s| serde_json::from_str(&s).ok());
+
                         runs.push(RunSummary {
                             id: path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
                             filename: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
@@ -83,6 +93,10 @@ async fn list_runs(State(state): State<Arc<AppState>>) -> Json<Vec<RunSummary>> 
                             estimated_cost: cost.estimated_cost_usd,
                             tokens_in: cost.total_tokens_in,
                             modified,
+                            total_target: meta.as_ref().and_then(|m| m["total_questions"].as_u64().map(|n| n as usize)),
+                            dataset: meta.as_ref().and_then(|m| m["dataset"].as_str().map(|s| s.to_string())),
+                            variant: meta.as_ref().and_then(|m| m["variant"].as_str().map(|s| s.to_string())),
+                            started_at: meta.as_ref().and_then(|m| m["started_at"].as_str().map(|s| s.to_string())),
                         });
                     }
                 }

@@ -13,6 +13,10 @@ interface RunSummary {
   estimated_cost: number;
   tokens_in: number;
   modified: string;
+  total_target: number | null;
+  dataset: string | null;
+  variant: string | null;
+  started_at: string | null;
 }
 
 interface Metrics {
@@ -146,11 +150,11 @@ const RunCard: Component<{ run: RunSummary; onClick: () => void; onExpand: () =>
 
         {/* Compact: progress bar */}
         <div class="flex items-center gap-2 text-xs text-base-content/50">
-          <span>{props.run.total_correct}/{props.run.total_questions}</span>
+          <span>{props.run.total_correct}/{props.run.total_questions}{props.run.total_target ? `/${props.run.total_target}` : ""}</span>
           <div class="flex-1 bg-base-300 rounded-full h-1.5">
             <div
-              class={`h-1.5 rounded-full ${props.run.accuracy >= 0.9 ? 'bg-success' : props.run.accuracy >= 0.7 ? 'bg-warning' : 'bg-error'}`}
-              style={{ width: `${Math.round(props.run.accuracy * 100)}%` }}
+              class={`h-1.5 rounded-full transition-all ${props.run.accuracy >= 0.9 ? 'bg-success' : props.run.accuracy >= 0.7 ? 'bg-warning' : 'bg-error'}`}
+              style={{ width: props.run.total_target ? `${Math.round((props.run.total_questions / props.run.total_target) * 100)}%` : `${Math.round(props.run.accuracy * 100)}%` }}
             ></div>
           </div>
           <span>{(props.run.accuracy * 100).toFixed(1)}%</span>
@@ -267,13 +271,18 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
   const [failOnly, setFailOnly] = createSignal(false);
   const [typeFilter, setTypeFilter] = createSignal("");
 
+  const [runInfo, setRunInfo] = createSignal<RunSummary | null>(null);
+
   const refresh = async () => {
-    const [m, q] = await Promise.all([
+    const [m, q, allRuns] = await Promise.all([
       fetchMetrics(props.runId),
       fetchQuestions(props.runId),
+      fetchRuns(),
     ]);
     setStore("metrics", reconcile(m));
     setStore("questions", reconcile(q, { key: "question_id", merge: true }));
+    const thisRun = allRuns.find((r: RunSummary) => r.id === props.runId);
+    if (thisRun) setRunInfo(thisRun);
   };
   refresh();
   const interval = setInterval(refresh, 5000);
@@ -337,21 +346,27 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
       {/* Overall progress bar */}
       <Show when={metrics()}>
         {(m) => {
-          const total = m().accuracy.total_questions;
+          const evaluated = m().accuracy.total_questions;
           const correct = m().accuracy.total_correct;
-          const pct = total > 0 ? correct / total : 0;
+          const target = runInfo()?.total_target || evaluated;
+          const accPct = evaluated > 0 ? correct / evaluated : 0;
+          const progressPct = target > 0 ? evaluated / target : 0;
+          const isRunning = target > evaluated;
           return (
             <div class="mb-6">
               <div class="flex justify-between items-baseline mb-1">
                 <span class="text-sm text-base-content/60">
-                  Progress: {correct} correct of {total} evaluated — {(pct * 100).toFixed(1)}% accuracy
+                  {correct} correct of {evaluated} evaluated
+                  {target > evaluated ? ` / ${target} total` : ""}
+                  {" — "}{(accPct * 100).toFixed(1)}% accuracy
+                  {isRunning ? <span class="badge badge-info badge-xs ml-2">Running</span> : ""}
                 </span>
-                <span class="text-sm text-base-content/40">{total - correct} failures</span>
+                <span class="text-sm text-base-content/40">{evaluated - correct} failures</span>
               </div>
               <div class="w-full bg-base-300 rounded-full h-2.5">
                 <div
-                  class={`h-2.5 rounded-full transition-all ${pct >= 0.9 ? 'bg-success' : pct >= 0.7 ? 'bg-warning' : 'bg-error'}`}
-                  style={{ width: `${Math.round(pct * 100)}%` }}
+                  class={`h-2.5 rounded-full transition-all ${accPct >= 0.9 ? 'bg-success' : accPct >= 0.7 ? 'bg-warning' : 'bg-error'}`}
+                  style={{ width: `${Math.round(progressPct * 100)}%` }}
                 ></div>
               </div>
             </div>
