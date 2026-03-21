@@ -332,6 +332,11 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
   const [questionsOpen, setQuestionsOpen] = createSignal(false);
   const [pageSize, setPageSize] = createSignal(10);
   const [page, setPage] = createSignal(0);
+  const [now, setNow] = createSignal(Date.now());
+
+  // Tick every second for elapsed/ETA display
+  const ticker = setInterval(() => setNow(Date.now()), 1000);
+  onCleanup(() => clearInterval(ticker));
 
   const pagedQuestions = () => {
     const filtered = filteredQuestions();
@@ -367,30 +372,34 @@ const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
       {/* Overall progress bar */}
       <Show when={metrics()}>
         {(m) => {
-          const evaluated = m().accuracy.total_questions;
-          const target = runInfo()?.total_target || evaluated;
-          const progressPct = target > 0 ? evaluated / target : 1;
-          const isRunning = target > evaluated;
-          const startedAt = runInfo()?.started_at;
-          const elapsed = startedAt ? Date.now() - new Date(startedAt).getTime() : 0;
-          const msPerQuestion = evaluated > 0 ? elapsed / evaluated : 0;
-          const remaining = (target - evaluated) * msPerQuestion;
+          const evaluated = () => m().accuracy.total_questions;
+          const target = () => runInfo()?.total_target || evaluated();
+          const progressPct = () => target() > 0 ? evaluated() / target() : 1;
+          const isRunning = () => target() > evaluated();
+          const startedAt = () => runInfo()?.started_at;
+          const elapsed = () => {
+            const sa = startedAt();
+            if (!sa) return 0;
+            return now() - new Date(sa).getTime();
+          };
+          const msPerQ = () => evaluated() > 0 ? elapsed() / evaluated() : 0;
+          const remaining = () => (target() - evaluated()) * msPerQ();
           return (
             <div class="mb-6">
               <div class="flex justify-between items-baseline mb-1">
                 <span class="text-sm text-base-content/60">
-                  Progress: {evaluated}/{target}
-                  {isRunning ? <span class="badge badge-info badge-xs ml-2">Running</span> : <span class="badge badge-success badge-xs ml-2">Complete</span>}
+                  Progress: {evaluated()}/{target()}
+                  {isRunning() ? <span class="badge badge-info badge-xs ml-2">Running</span> : <span class="badge badge-success badge-xs ml-2">Complete</span>}
                 </span>
                 <span class="text-xs text-base-content/40">
-                  {elapsed > 0 ? `Elapsed: ${formatElapsed(elapsed)}` : ""}
-                  {isRunning && msPerQuestion > 0 ? ` — ETA: ${formatElapsed(remaining)}` : ""}
+                  {elapsed() > 0 ? `Elapsed: ${formatElapsed(elapsed())}` : ""}
+                  {isRunning() && msPerQ() > 0 ? ` — ETA: ${formatElapsed(remaining())}` : ""}
                 </span>
               </div>
               <div class="w-full bg-base-300 rounded-full h-2.5">
                 <div
-                  class={`h-2.5 rounded-full transition-all ${isRunning ? 'bg-info' : 'bg-success'}`}
-                  style={{ width: `${Math.round(progressPct * 100)}%` }}
+                  class={`h-2.5 rounded-full transition-all ${isRunning() ? 'bg-info' : 'bg-success'}`}
+                  style={{ width: `${Math.round(progressPct() * 100)}%` }}
                 ></div>
               </div>
             </div>
