@@ -1,4 +1,4 @@
-import { createSignal, createResource, For, Show, Component } from "solid-js";
+import { createSignal, createResource, For, Show, Component, onCleanup } from "solid-js";
 
 interface RunSummary {
   id: string;
@@ -160,7 +160,11 @@ const StatCard: Component<{ label: string; value: string; class?: string }> = (p
 );
 
 const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
-  const [runs] = createResource(fetchRuns);
+  const [runs, { refetch }] = createResource(fetchRuns);
+
+  // Auto-refresh every 5 seconds for live progress
+  const interval = setInterval(() => refetch(), 5000);
+  onCleanup(() => clearInterval(interval));
 
   return (
     <div>
@@ -191,10 +195,14 @@ const Dashboard: Component<{ onSelectRun: (id: string) => void }> = (props) => {
 };
 
 const RunDetail: Component<{ runId: string; onBack: () => void }> = (props) => {
-  const [metrics] = createResource(() => props.runId, fetchMetrics);
-  const [questions] = createResource(() => props.runId, fetchQuestions);
+  const [metrics, { refetch: refetchMetrics }] = createResource(() => props.runId, fetchMetrics);
+  const [questions, { refetch: refetchQuestions }] = createResource(() => props.runId, fetchQuestions);
   const [failOnly, setFailOnly] = createSignal(false);
   const [typeFilter, setTypeFilter] = createSignal("");
+
+  // Auto-refresh every 5 seconds for live progress
+  const interval = setInterval(() => { refetchMetrics(); refetchQuestions(); }, 5000);
+  onCleanup(() => clearInterval(interval));
 
   const filteredQuestions = () => {
     let qs = questions() || [];
