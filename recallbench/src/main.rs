@@ -570,7 +570,7 @@ async fn cmd_run(
 
     // Build or load embedding cache if system supports it
         let embedding_cache = if system.supports_precomputed() {
-        let model_name = "all-MiniLM-L6-v2"; // TODO: get from adapter
+        let model_name = "sentence-transformers/all-MiniLM-L6-v2";
         if embedding_cache::EmbeddingCache::exists(&dataset, &variant, model_name) {
             tracing::info!("Using cached embeddings for {dataset}/{variant}");
             Some(embedding_cache::EmbeddingCache::open(&dataset, &variant, model_name)?)
