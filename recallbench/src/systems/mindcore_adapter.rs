@@ -172,6 +172,12 @@ impl MemorySystem for MindCoreAdapter {
     fn name(&self) -> &str { "mindcore" }
     fn version(&self) -> &str { env!("CARGO_PKG_VERSION") }
 
+    fn supports_precomputed(&self) -> bool { true }
+
+    fn load_precomputed(&self, chunks: &[(String, Vec<f32>, String, usize)]) -> Result<usize> {
+        self.load_precomputed(chunks)
+    }
+
     async fn reset(&self) -> Result<()> {
         // Reuse the existing backend Arc — no model reload needed
         let new_engine = MemoryEngine::<ConversationMemory>::builder()

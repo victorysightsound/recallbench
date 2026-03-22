@@ -566,6 +566,43 @@ async fn cmd_run(
     let gen_llm = create_llm_client(gen_model, &cfg)?;
     let judge_llm = create_llm_client(judge_model, &cfg)?;
 
+    // Build or load embedding cache if system supports it
+    #[cfg(feature = "mindcore-adapter")]
+    let embedding_cache = if system.supports_precomputed() {
+        let model_name = "all-MiniLM-L6-v2"; // TODO: get from adapter
+        if embedding_cache::EmbeddingCache::exists(&dataset, &variant, model_name) {
+            tracing::info!("Using cached embeddings for {dataset}/{variant}");
+            Some(embedding_cache::EmbeddingCache::open(&dataset, &variant, model_name)?)
+        } else {
+            tracing::info!("Building embedding cache for {dataset}/{variant} (one-time)...");
+            // Get API key for DeepInfra embedding
+            let key_output = std::process::Command::new("sh")
+                .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+                .output();
+            let api_key = key_output.ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|k| !k.is_empty());
+
+            if let Some(key) = api_key {
+                let backend = mindcore::embeddings::ApiBackend::deepinfra_minilm(&key);
+                let cache = embedding_cache::EmbeddingCache::build(
+                    &dataset, &variant, ds.questions(), &backend, 2000, 10,
+                )?;
+                Some(cache)
+            } else {
+                tracing::warn!("No DeepInfra API key found, building cache with local model...");
+                let backend = mindcore::embeddings::CandleNativeBackend::new()?;
+                let cache = embedding_cache::EmbeddingCache::build(
+                    &dataset, &variant, ds.questions(), &backend, 2000, 10,
+                )?;
+                Some(cache)
+            }
+        }
+    } else {
+        None
+    };
+
     // Run benchmark
     let run_config = runner::RunConfig {
         concurrency,
@@ -575,6 +612,8 @@ async fn cmd_run(
         resume: do_resume,
         quick_size,
         note,
+        #[cfg(feature = "mindcore-adapter")]
+        embedding_cache,
     };
 
     let results = runner::run_benchmark(
@@ -664,7 +703,9 @@ async fn cmd_stress(
             filter_types: None,
             resume: false,
             quick_size,
-        note: None,
+            note: None,
+            #[cfg(feature = "mindcore-adapter")]
+            embedding_cache: None,
         };
 
         let results = runner::run_benchmark(
@@ -729,7 +770,9 @@ async fn cmd_budget_sweep(
             filter_types: None,
             resume: false,
             quick_size,
-        note: None,
+            note: None,
+            #[cfg(feature = "mindcore-adapter")]
+            embedding_cache: None,
         };
 
         let results = runner::run_benchmark(
@@ -859,6 +902,8 @@ async fn cmd_compare(
             resume: false,
             quick_size: None,
             note: None,
+            #[cfg(feature = "mindcore-adapter")]
+            embedding_cache: None,
         };
 
         println!("\nBenchmarking {sys_name} ...");

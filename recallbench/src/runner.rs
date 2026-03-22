@@ -23,6 +23,9 @@ pub struct RunConfig {
     pub quick_size: Option<usize>,
     /// Optional note describing the purpose of this run.
     pub note: Option<String>,
+    /// Pre-computed embedding cache for fast dataset loading.
+    #[cfg(feature = "mindcore-adapter")]
+    pub embedding_cache: Option<crate::embedding_cache::EmbeddingCache>,
 }
 
 /// Run a benchmark: evaluate all questions against a memory system.
@@ -132,6 +135,8 @@ pub async fn run_benchmark(
             gen_llm.as_ref(),
             judge_llm.as_ref(),
             config.token_budget,
+            #[cfg(feature = "mindcore-adapter")]
+            &config.embedding_cache,
         ).await;
 
         match result {
@@ -185,14 +190,40 @@ async fn evaluate_question(
     gen_llm: &dyn LLMClient,
     judge_llm: &dyn LLMClient,
     token_budget: usize,
+    #[cfg(feature = "mindcore-adapter")]
+    embedding_cache: &Option<crate::embedding_cache::EmbeddingCache>,
 ) -> Result<EvalResult> {
     // 1. Reset
     system.reset().await?;
 
-    // 2. Ingest
+    // 2. Ingest (from cache if available, otherwise live embedding)
     let ingest_start = Instant::now();
-    for session in &question.sessions {
-        system.ingest_session(session).await?;
+
+    #[cfg(feature = "mindcore-adapter")]
+    let used_cache = if let Some(ref cache) = embedding_cache {
+        if system.supports_precomputed() {
+            let session_ids: Vec<&str> = question.sessions.iter().map(|s| s.id.as_str()).collect();
+            let cached_chunks = cache.load_sessions(&session_ids)?;
+            let tuples: Vec<(String, Vec<f32>, String, usize)> = cached_chunks.into_iter()
+                .map(|c| (c.text, c.embedding, c.session_date, c.chunk_index))
+                .collect();
+            let loaded = system.load_precomputed(&tuples)?;
+            tracing::debug!("Loaded {loaded} chunks from cache");
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    #[cfg(not(feature = "mindcore-adapter"))]
+    let used_cache = false;
+
+    if !used_cache {
+        for session in &question.sessions {
+            system.ingest_session(session).await?;
+        }
     }
     let ingest_ms = ingest_start.elapsed().as_millis() as u64;
 

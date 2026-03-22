@@ -22,6 +22,17 @@ pub trait MemorySystem: Send + Sync {
     /// Ingest a conversation session into the memory system.
     async fn ingest_session(&self, session: &ConversationSession) -> Result<IngestStats>;
 
+    /// Load pre-computed chunks with embeddings (for cached datasets).
+    ///
+    /// Each tuple is (text, embedding, session_date, chunk_index).
+    /// Default: not supported (returns 0). Override for systems with embedding support.
+    fn load_precomputed(&self, _chunks: &[(String, Vec<f32>, String, usize)]) -> Result<usize> {
+        Ok(0)
+    }
+
+    /// Whether this system supports pre-computed embedding loading.
+    fn supports_precomputed(&self) -> bool { false }
+
     /// Retrieve relevant context for a question within a token budget.
     ///
     /// The memory system should search its stored memories using the query,
