@@ -30,8 +30,7 @@
 pub mod checkpoint;
 pub mod config;
 pub mod datasets;
-// embedding_cache is used by the binary (main.rs), not the library
-// pub mod embedding_cache;
+pub mod retrieval_test;
 pub mod errors;
 pub mod judge;
 pub mod llm;

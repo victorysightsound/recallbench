@@ -12,6 +12,7 @@ mod longevity;
 mod metrics;
 mod report;
 mod resume;
+mod retrieval_test;
 mod runner;
 mod sampling;
 mod systems;
@@ -214,6 +215,34 @@ enum Commands {
         note: String,
     },
 
+    /// Test retrieval quality without LLM calls (zero cost, instant feedback)
+    RetrievalTest {
+        /// System name
+        #[arg(long, default_value = "mindcore-api")]
+        system: String,
+        /// Dataset name
+        #[arg(long, default_value = "longmemeval")]
+        dataset: String,
+        /// Dataset variant
+        #[arg(long, default_value = "small")]
+        variant: String,
+        /// Token budget for context retrieval
+        #[arg(long)]
+        budget: Option<usize>,
+        /// Filter by question types (comma-separated)
+        #[arg(long)]
+        filter: Option<String>,
+        /// Quick mode: test a random subset
+        #[arg(long)]
+        quick: bool,
+        /// Number of questions in quick mode
+        #[arg(long, default_value = "20")]
+        quick_size: Option<usize>,
+        /// Show detailed per-question failures
+        #[arg(long)]
+        verbose: bool,
+    },
+
     /// Launch local web UI to browse results
     Serve {
         /// Port to listen on
@@ -359,6 +388,15 @@ async fn main() -> Result<()> {
             std::fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)?;
             println!("Note updated on {}", meta_path.display());
             Ok(())
+        }
+        Commands::RetrievalTest {
+            system: system_name, dataset, variant, budget, filter,
+            quick, quick_size, verbose,
+        } => {
+            cmd_retrieval_test(
+                &system_name, &dataset, &variant, budget, filter.as_deref(),
+                quick, quick_size, verbose,
+            ).await
         }
         Commands::Serve { port, results_dir } => {
             web::serve(port, results_dir).await
@@ -926,6 +964,145 @@ async fn cmd_compare(
         println!("\n{}", report::table::render_accuracy_table(&acc_refs, dataset, variant));
         println!("{}", report::table::render_latency_table(&lat_refs));
         println!("{}", report::table::render_cost_table(&cost_refs));
+    }
+
+    Ok(())
+}
+
+async fn cmd_retrieval_test(
+    system_name: &str,
+    dataset: &str,
+    variant: &str,
+    budget: Option<usize>,
+    filter: Option<&str>,
+    quick: bool,
+    quick_size: Option<usize>,
+    verbose: bool,
+) -> Result<()> {
+    let cfg = config::Config::load_default()?;
+    let token_budget = budget.unwrap_or(cfg.defaults.token_budget);
+
+    // Load dataset
+    let registry = datasets::DatasetRegistry::new();
+    let ds = registry.load(dataset, variant, false).await?;
+
+    // Filter questions
+    let all_questions = ds.questions();
+    let questions: Vec<&types::BenchmarkQuestion> = all_questions.iter()
+        .filter(|q| !q.is_abstention)
+        .filter(|q| {
+            if let Some(f) = filter {
+                f.split(',').any(|t| t.trim() == q.question_type)
+            } else {
+                true
+            }
+        })
+        .filter(|q| {
+            // Must have answer_session_ids
+            q.metadata.contains_key("answer_session_ids")
+        })
+        .collect();
+
+    let questions: Vec<&types::BenchmarkQuestion> = if quick {
+        let size = quick_size.unwrap_or(20);
+        // Simple random selection for quick mode
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut indexed: Vec<(u64, &types::BenchmarkQuestion)> = questions.iter().map(|q| {
+            let mut h = DefaultHasher::new();
+            q.id.hash(&mut h);
+            (h.finish(), *q)
+        }).collect();
+        indexed.sort_by_key(|(h, _)| *h);
+        indexed.truncate(size);
+        indexed.into_iter().map(|(_, q)| q).collect()
+    } else {
+        questions
+    };
+
+    println!("Retrieval Test — {} {} ({} questions, budget: {})",
+        dataset, variant, questions.len(), token_budget);
+    println!("══════════════════════════════════════════════════════");
+
+    // Create system
+    let system: Box<dyn traits::MemorySystem> = match system_name {
+        "echo" => Box::new(systems::echo::EchoSystem::new()),
+        #[cfg(feature = "mindcore-adapter")]
+        "mindcore" => Box::new(systems::mindcore_adapter::MindCoreAdapter::new()?),
+        #[cfg(feature = "mindcore-adapter")]
+        "mindcore-api" | "mindcore-fallback" => {
+            let key_output = std::process::Command::new("sh")
+                .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+                .output()?;
+            let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+            if system_name == "mindcore-api" {
+                Box::new(systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?)
+            } else {
+                Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
+            }
+        },
+        _ => anyhow::bail!("Unknown system: {system_name}"),
+    };
+
+    // Check for embedding cache
+    let cache_path = {
+        let model_name = "sentence-transformers/all-MiniLM-L6-v2";
+        if embedding_cache::EmbeddingCache::exists(dataset, variant, model_name) {
+            Some(embedding_cache::EmbeddingCache::cache_path(dataset, variant, model_name))
+        } else {
+            tracing::warn!("No embedding cache found — will use live embedding (slow)");
+            None
+        }
+    };
+
+    // Run retrieval test
+    let pb = indicatif::ProgressBar::new(questions.len() as u64);
+    pb.set_style(indicatif::ProgressStyle::default_bar()
+        .template("{msg}\n{wide_bar:.cyan/dim} {pos}/{len} ({eta})")
+        .unwrap());
+    pb.set_message("Testing retrieval...");
+
+    let mut results = Vec::new();
+    for question in &questions {
+        let result = retrieval_test::test_retrieval(
+            system.as_ref(),
+            question,
+            token_budget,
+            cache_path.as_deref(),
+        ).await?;
+        results.push(result);
+        pb.inc(1);
+    }
+    pb.finish_with_message("Done");
+
+    // Compute and display metrics
+    let metrics = retrieval_test::RetrievalMetrics::compute(&results);
+    println!();
+    metrics.print_report();
+
+    if verbose {
+        retrieval_test::print_failures(&results);
+    }
+
+    // Always show summary of worst questions
+    let mut worst: Vec<_> = results.iter()
+        .filter(|r| !r.answer_session_ids.is_empty())
+        .collect();
+    worst.sort_by(|a, b| {
+        let a_found = a.found_at(1000) as f64 / a.answer_session_ids.len().max(1) as f64;
+        let b_found = b.found_at(1000) as f64 / b.answer_session_ids.len().max(1) as f64;
+        a_found.partial_cmp(&b_found).unwrap()
+    });
+
+    println!("\nWorst 5 questions (fewest answer sessions found):");
+    for r in worst.iter().take(5) {
+        let found = r.found_at(1000);
+        let total = r.answer_session_ids.len();
+        let missing = r.missing_sessions();
+        println!("  {} [{}]: {}/{} sessions, missing: {:?}",
+            &r.question_id[..r.question_id.len().min(12)],
+            &r.question_type[..r.question_type.len().min(15)],
+            found, total, missing);
     }
 
     Ok(())

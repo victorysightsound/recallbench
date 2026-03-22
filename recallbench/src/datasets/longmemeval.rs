@@ -87,6 +87,8 @@ struct RawQuestion {
     haystack_dates: Vec<String>,
     #[serde(default)]
     haystack_session_ids: Vec<String>,
+    #[serde(default)]
+    answer_session_ids: Vec<String>,
 }
 
 /// Raw turn from LongMemEval.
@@ -163,7 +165,14 @@ impl LongMemEvalDataset {
                 question_date: raw.question_date,
                 sessions,
                 is_abstention,
-                metadata: std::collections::HashMap::new(),
+                metadata: {
+                    let mut m = std::collections::HashMap::new();
+                    if !raw.answer_session_ids.is_empty() {
+                        m.insert("answer_session_ids".to_string(),
+                            serde_json::json!(raw.answer_session_ids));
+                    }
+                    m
+                },
             }
         }).collect();
 
