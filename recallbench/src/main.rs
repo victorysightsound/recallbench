@@ -3,6 +3,8 @@
 mod checkpoint;
 mod config;
 mod datasets;
+#[cfg(feature = "mindcore-adapter")]
+mod embedding_cache;
 mod errors;
 mod judge;
 mod llm;
@@ -567,8 +569,7 @@ async fn cmd_run(
     let judge_llm = create_llm_client(judge_model, &cfg)?;
 
     // Build or load embedding cache if system supports it
-    #[cfg(feature = "mindcore-adapter")]
-    let embedding_cache = if system.supports_precomputed() {
+        let embedding_cache = if system.supports_precomputed() {
         let model_name = "all-MiniLM-L6-v2"; // TODO: get from adapter
         if embedding_cache::EmbeddingCache::exists(&dataset, &variant, model_name) {
             tracing::info!("Using cached embeddings for {dataset}/{variant}");
@@ -612,8 +613,7 @@ async fn cmd_run(
         resume: do_resume,
         quick_size,
         note,
-        #[cfg(feature = "mindcore-adapter")]
-        embedding_cache,
+                embedding_cache_path: embedding_cache.as_ref().map(|c| c.path().to_path_buf()),
     };
 
     let results = runner::run_benchmark(
@@ -704,8 +704,7 @@ async fn cmd_stress(
             resume: false,
             quick_size,
             note: None,
-            #[cfg(feature = "mindcore-adapter")]
-            embedding_cache: None,
+                        embedding_cache_path: None,
         };
 
         let results = runner::run_benchmark(
@@ -771,8 +770,7 @@ async fn cmd_budget_sweep(
             resume: false,
             quick_size,
             note: None,
-            #[cfg(feature = "mindcore-adapter")]
-            embedding_cache: None,
+                        embedding_cache_path: None,
         };
 
         let results = runner::run_benchmark(
@@ -902,8 +900,7 @@ async fn cmd_compare(
             resume: false,
             quick_size: None,
             note: None,
-            #[cfg(feature = "mindcore-adapter")]
-            embedding_cache: None,
+                        embedding_cache_path: None,
         };
 
         println!("\nBenchmarking {sys_name} ...");

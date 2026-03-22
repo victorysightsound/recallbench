@@ -23,9 +23,8 @@ pub struct RunConfig {
     pub quick_size: Option<usize>,
     /// Optional note describing the purpose of this run.
     pub note: Option<String>,
-    /// Pre-computed embedding cache for fast dataset loading.
-    #[cfg(feature = "mindcore-adapter")]
-    pub embedding_cache: Option<crate::embedding_cache::EmbeddingCache>,
+    /// Path to pre-computed embedding cache SQLite file.
+    pub embedding_cache_path: Option<std::path::PathBuf>,
 }
 
 /// Run a benchmark: evaluate all questions against a memory system.
@@ -135,8 +134,7 @@ pub async fn run_benchmark(
             gen_llm.as_ref(),
             judge_llm.as_ref(),
             config.token_budget,
-            #[cfg(feature = "mindcore-adapter")]
-            &config.embedding_cache,
+            config.embedding_cache_path.as_deref(),
         ).await;
 
         match result {
@@ -190,8 +188,7 @@ async fn evaluate_question(
     gen_llm: &dyn LLMClient,
     judge_llm: &dyn LLMClient,
     token_budget: usize,
-    #[cfg(feature = "mindcore-adapter")]
-    embedding_cache: &Option<crate::embedding_cache::EmbeddingCache>,
+    cache_path: Option<&std::path::Path>,
 ) -> Result<EvalResult> {
     // 1. Reset
     system.reset().await?;
@@ -199,26 +196,38 @@ async fn evaluate_question(
     // 2. Ingest (from cache if available, otherwise live embedding)
     let ingest_start = Instant::now();
 
-    #[cfg(feature = "mindcore-adapter")]
-    let used_cache = if let Some(ref cache) = embedding_cache {
+    let mut used_cache = false;
+    if let Some(path) = cache_path {
         if system.supports_precomputed() {
+            // Open cache and load pre-computed chunks for this question's sessions
+            let cache_conn = rusqlite::Connection::open(path)?;
             let session_ids: Vec<&str> = question.sessions.iter().map(|s| s.id.as_str()).collect();
-            let cached_chunks = cache.load_sessions(&session_ids)?;
-            let tuples: Vec<(String, Vec<f32>, String, usize)> = cached_chunks.into_iter()
-                .map(|c| (c.text, c.embedding, c.session_date, c.chunk_index))
-                .collect();
-            let loaded = system.load_precomputed(&tuples)?;
-            tracing::debug!("Loaded {loaded} chunks from cache");
-            true
-        } else {
-            false
-        }
-    } else {
-        false
-    };
+            let mut tuples: Vec<(String, Vec<f32>, String, usize)> = Vec::new();
 
-    #[cfg(not(feature = "mindcore-adapter"))]
-    let used_cache = false;
+            for session_id in &session_ids {
+                let mut stmt = cache_conn.prepare(
+                    "SELECT chunk_text, embedding, session_date, chunk_index
+                     FROM session_chunks WHERE session_id = ?1 ORDER BY chunk_index",
+                )?;
+                let rows = stmt.query_map([session_id], |row| {
+                    let text: String = row.get(0)?;
+                    let blob: Vec<u8> = row.get(1)?;
+                    let date: String = row.get(2)?;
+                    let idx: usize = row.get(3)?;
+                    Ok((text, blob, date, idx))
+                })?;
+                for row in rows {
+                    let (text, blob, date, idx) = row?;
+                    let embedding = mindcore::embeddings::pooling::bytes_to_vec(&blob);
+                    tuples.push((text, embedding, date, idx));
+                }
+            }
+
+            let loaded = system.load_precomputed(&tuples)?;
+            tracing::debug!("Loaded {loaded} chunks from cache for {} sessions", session_ids.len());
+            used_cache = true;
+        }
+    }
 
     if !used_cache {
         for session in &question.sessions {
