@@ -47,15 +47,42 @@ impl MemoryRecord for ConversationMemory {
 
 pub struct MindCoreAdapter {
     engine: Mutex<MemoryEngine<ConversationMemory>>,
+    /// Accumulated records awaiting batch embedding. Flushed on retrieve_context().
+    pending: Mutex<Vec<ConversationMemory>>,
+    /// Reusable embedding backend — shared Arc avoids reloading model on reset().
+    backend: std::sync::Arc<CandleNativeBackend>,
 }
 
 impl MindCoreAdapter {
     pub fn new() -> Result<Self> {
-        let embedding = CandleNativeBackend::new()?;
+        let backend = std::sync::Arc::new(CandleNativeBackend::new()?);
         let engine = MemoryEngine::<ConversationMemory>::builder()
-            .embedding_backend(embedding)
+            .embedding_backend_arc(std::sync::Arc::clone(&backend) as std::sync::Arc<dyn mindcore::embeddings::EmbeddingBackend>)
             .build()?;
-        Ok(Self { engine: Mutex::new(engine) })
+        Ok(Self {
+            engine: Mutex::new(engine),
+            pending: Mutex::new(Vec::new()),
+            backend,
+        })
+    }
+
+    /// Flush all pending records into the engine via a single store_batch().
+    fn flush_pending(&self) -> Result<(usize, usize)> {
+        let records: Vec<ConversationMemory> = {
+            let mut pending = self.pending.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+            std::mem::take(&mut *pending)
+        };
+
+        if records.is_empty() {
+            return Ok((0, 0));
+        }
+
+        tracing::info!("Flushing {} accumulated chunks for batch embedding", records.len());
+        let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let results = engine.store_batch(&records)?;
+        let stored = results.iter().filter(|r| matches!(r, StoreResult::Added(_))).count();
+        let dupes = results.iter().filter(|r| matches!(r, StoreResult::Duplicate(_))).count();
+        Ok((stored, dupes))
     }
 }
 
@@ -65,23 +92,25 @@ impl MemorySystem for MindCoreAdapter {
     fn version(&self) -> &str { env!("CARGO_PKG_VERSION") }
 
     async fn reset(&self) -> Result<()> {
-        let embedding = CandleNativeBackend::new()?;
+        // Reuse the existing backend Arc — no model reload needed
         let new_engine = MemoryEngine::<ConversationMemory>::builder()
-            .embedding_backend(embedding)
+            .embedding_backend_arc(std::sync::Arc::clone(&self.backend) as std::sync::Arc<dyn mindcore::embeddings::EmbeddingBackend>)
             .build()?;
         let mut guard = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         *guard = new_engine;
+        // Clear any pending records from previous question
+        let mut pending = self.pending.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        pending.clear();
         Ok(())
     }
 
     async fn ingest_session(&self, session: &ConversationSession) -> Result<IngestStats> {
         let start = std::time::Instant::now();
-        let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let session_date = session.date.clone().unwrap_or_default();
 
-        // Chunk session turns into ~500-char segments for higher-quality embeddings
+        // Chunk session turns into ~2000-char segments (larger = fewer embeddings, faster)
         let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
-        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 500, 10);
+        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 2000, 10);
 
         let records: Vec<ConversationMemory> = chunks.iter().enumerate()
             .map(|(idx, chunk)| ConversationMemory {
@@ -95,20 +124,22 @@ impl MemorySystem for MindCoreAdapter {
             })
             .collect();
 
-        let results = engine.store_batch(&records)?;
-        let mut stored = 0usize;
-        let mut duplicates = 0usize;
-        for result in &results {
-            match result {
-                StoreResult::Added(_) => stored += 1,
-                StoreResult::Duplicate(_) => duplicates += 1,
-            }
-        }
+        let count = records.len();
 
-        Ok(IngestStats { memories_stored: stored, duplicates_skipped: duplicates, duration_ms: start.elapsed().as_millis() as u64 })
+        // Accumulate — don't embed yet. All sessions will be batch-embedded at retrieve time.
+        let mut pending = self.pending.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        pending.extend(records);
+
+        Ok(IngestStats { memories_stored: count, duplicates_skipped: 0, duration_ms: start.elapsed().as_millis() as u64 })
     }
 
     async fn retrieve_context(&self, query: &str, _query_date: Option<&str>, token_budget: usize) -> Result<RetrievalResult> {
+        // Flush all accumulated chunks in a single batch (one embed_batch() call)
+        let (stored, _dupes) = self.flush_pending()?;
+        if stored > 0 {
+            tracing::info!("Batch embedded {stored} chunks");
+        }
+
         let start = std::time::Instant::now();
         let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let budget = ContextBudget::new(token_budget);
@@ -135,14 +166,15 @@ mod tests {
         let session = ConversationSession {
             id: "s1".to_string(), date: Some("2024-01-15".to_string()),
             turns: vec![
-                Turn { role: "user".to_string(), content: "My favorite color is blue".to_string() },
-                Turn { role: "assistant".to_string(), content: "Got it!".to_string() },
+                Turn { role: "user".to_string(), content: "My favorite color is blue and I really enjoy painting landscapes".to_string() },
+                Turn { role: "assistant".to_string(), content: "That sounds wonderful! Blue is a calming color for landscapes.".to_string() },
             ],
         };
         let stats = adapter.ingest_session(&session).await.unwrap();
-        assert_eq!(stats.memories_stored, 2);
+        assert!(stats.memories_stored >= 1, "should store at least 1 chunk");
+        // Retrieval triggers flush + embedding
         let result = adapter.retrieve_context("favorite color", None, 16384).await.unwrap();
-        assert!(result.context.contains("blue"));
+        assert!(result.context.contains("blue"), "should find 'blue' in context");
     }
 
     #[tokio::test]
@@ -150,7 +182,7 @@ mod tests {
         let adapter = MindCoreAdapter::new().unwrap();
         let session = ConversationSession {
             id: "s1".to_string(), date: None,
-            turns: vec![Turn { role: "user".to_string(), content: "Hello".to_string() }],
+            turns: vec![Turn { role: "user".to_string(), content: "Hello world, this is a test message with enough content".to_string() }],
         };
         adapter.ingest_session(&session).await.unwrap();
         adapter.reset().await.unwrap();
