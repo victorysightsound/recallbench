@@ -9,7 +9,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 use mindcore::context::ContextBudget;
-use mindcore::embeddings::CandleNativeBackend;
+use mindcore::embeddings::{CandleNativeBackend, EmbeddingBackend};
 use mindcore::engine::MemoryEngine;
 use mindcore::memory::store::StoreResult;
 use mindcore::traits::{MemoryRecord, MemoryType};
@@ -50,14 +50,21 @@ pub struct MindCoreAdapter {
     /// Accumulated records awaiting batch embedding. Flushed on retrieve_context().
     pending: Mutex<Vec<ConversationMemory>>,
     /// Reusable embedding backend — shared Arc avoids reloading model on reset().
-    backend: std::sync::Arc<CandleNativeBackend>,
+    backend: std::sync::Arc<dyn EmbeddingBackend>,
 }
 
 impl MindCoreAdapter {
+    /// Create with the default local CandleNativeBackend (all-MiniLM-L6-v2).
     pub fn new() -> Result<Self> {
-        let backend = std::sync::Arc::new(CandleNativeBackend::new()?);
+        let backend: std::sync::Arc<dyn EmbeddingBackend> =
+            std::sync::Arc::new(CandleNativeBackend::new()?);
+        Self::with_backend(backend)
+    }
+
+    /// Create with a custom embedding backend (API, local, or fallback).
+    pub fn with_backend(backend: std::sync::Arc<dyn EmbeddingBackend>) -> Result<Self> {
         let engine = MemoryEngine::<ConversationMemory>::builder()
-            .embedding_backend_arc(std::sync::Arc::clone(&backend) as std::sync::Arc<dyn mindcore::embeddings::EmbeddingBackend>)
+            .embedding_backend_arc(std::sync::Arc::clone(&backend))
             .build()?;
         Ok(Self {
             engine: Mutex::new(engine),
@@ -94,7 +101,7 @@ impl MemorySystem for MindCoreAdapter {
     async fn reset(&self) -> Result<()> {
         // Reuse the existing backend Arc — no model reload needed
         let new_engine = MemoryEngine::<ConversationMemory>::builder()
-            .embedding_backend_arc(std::sync::Arc::clone(&self.backend) as std::sync::Arc<dyn mindcore::embeddings::EmbeddingBackend>)
+            .embedding_backend_arc(std::sync::Arc::clone(&self.backend))
             .build()?;
         let mut guard = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         *guard = new_engine;
