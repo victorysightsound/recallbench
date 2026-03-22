@@ -560,6 +560,8 @@ async fn cmd_run(
                     Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
                 }
             },
+            #[cfg(feature = "memloft-adapter")]
+            "memloft" => Box::new(systems::memloft_adapter::MemloftAdapter::new()?),
             _ => anyhow::bail!("Unknown system: {system_name}. Use --system-config for custom systems."),
         }
     };
