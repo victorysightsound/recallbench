@@ -543,6 +543,21 @@ async fn cmd_run(
             "echo" => Box::new(systems::echo::EchoSystem::new()),
             #[cfg(feature = "mindcore-adapter")]
             "mindcore" => Box::new(systems::mindcore_adapter::MindCoreAdapter::new()?),
+            #[cfg(feature = "mindcore-adapter")]
+            "mindcore-api" | "mindcore-fallback" => {
+                let key_output = std::process::Command::new("sh")
+                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+                    .output()?;
+                let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+                if api_key.is_empty() {
+                    anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
+                }
+                if system_name == "mindcore-api" {
+                    Box::new(systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?)
+                } else {
+                    Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
+                }
+            },
             _ => anyhow::bail!("Unknown system: {system_name}. Use --system-config for custom systems."),
         }
     };
@@ -800,6 +815,31 @@ async fn cmd_compare(
             "mindcore" => match systems::mindcore_adapter::MindCoreAdapter::new() {
                 Ok(a) => Box::new(a),
                 Err(e) => { tracing::error!("Failed to create MindCore adapter: {e}"); continue; }
+            },
+            #[cfg(feature = "mindcore-adapter")]
+            "mindcore-api" | "mindcore-fallback" => {
+                // Fetch DeepInfra API key from keychain
+                let key_result = std::process::Command::new("sh")
+                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+                    .output();
+                let api_key = match key_result {
+                    Ok(output) if output.status.success() => {
+                        String::from_utf8_lossy(&output.stdout).trim().to_string()
+                    }
+                    _ => {
+                        tracing::error!("Failed to fetch DeepInfra API key from keychain");
+                        continue;
+                    }
+                };
+                let adapter = if *sys_name == "mindcore-api" {
+                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)
+                } else {
+                    systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)
+                };
+                match adapter {
+                    Ok(a) => Box::new(a),
+                    Err(e) => { tracing::error!("Failed to create MindCore API adapter: {e}"); continue; }
+                }
             },
             _ => {
                 tracing::warn!("Unknown system '{sys_name}', skipping.");

@@ -9,7 +9,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 use mindcore::context::ContextBudget;
-use mindcore::embeddings::{CandleNativeBackend, EmbeddingBackend};
+use mindcore::embeddings::{ApiBackend, CandleNativeBackend, EmbeddingBackend, FallbackBackend};
 use mindcore::engine::MemoryEngine;
 use mindcore::memory::store::StoreResult;
 use mindcore::traits::{MemoryRecord, MemoryType};
@@ -58,6 +58,22 @@ impl MindCoreAdapter {
     pub fn new() -> Result<Self> {
         let backend: std::sync::Arc<dyn EmbeddingBackend> =
             std::sync::Arc::new(CandleNativeBackend::new()?);
+        Self::with_backend(backend)
+    }
+
+    /// Create with DeepInfra API backend (all-MiniLM-L6-v2, fast remote embedding).
+    pub fn with_deepinfra_api(api_key: &str) -> Result<Self> {
+        let backend: std::sync::Arc<dyn EmbeddingBackend> =
+            std::sync::Arc::new(ApiBackend::deepinfra_minilm(api_key));
+        Self::with_backend(backend)
+    }
+
+    /// Create with API-first, local-fallback pattern.
+    pub fn with_api_and_local_fallback(api_key: &str) -> Result<Self> {
+        let api = Box::new(ApiBackend::deepinfra_minilm(api_key)) as Box<dyn EmbeddingBackend>;
+        let local = Box::new(CandleNativeBackend::new()?) as Box<dyn EmbeddingBackend>;
+        let backend: std::sync::Arc<dyn EmbeddingBackend> =
+            std::sync::Arc::new(FallbackBackend::api_with_local_fallback(api, local));
         Self::with_backend(backend)
     }
 
