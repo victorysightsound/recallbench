@@ -30,6 +30,8 @@
 pub mod checkpoint;
 pub mod config;
 pub mod datasets;
+#[cfg(feature = "mindcore-adapter")]
+pub mod embedding_cache;
 pub mod errors;
 pub mod judge;
 pub mod llm;

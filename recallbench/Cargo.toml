@@ -35,6 +35,8 @@ dirs = { workspace = true }
 futures-util = { workspace = true }
 which = { workspace = true }
 open = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
 mindcore = { path = "../../mindcore", optional = true, features = ["vector-search", "api-embeddings"] }
 
 [features]

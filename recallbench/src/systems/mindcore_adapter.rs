@@ -89,6 +89,64 @@ impl MindCoreAdapter {
         })
     }
 
+    /// Load pre-computed chunks from the embedding cache.
+    ///
+    /// Inserts text into the memories table (triggering FTS5 indexing) and
+    /// pre-computed vectors into memory_vectors — skips the embedding backend entirely.
+    /// Load pre-computed chunks with their embeddings into the engine.
+    ///
+    /// Each chunk is a (text, embedding, session_date, chunk_index) tuple.
+    /// Inserts text into memories (triggering FTS5), vectors into memory_vectors,
+    /// bypassing the embedding backend entirely.
+    pub fn load_precomputed(
+        &self,
+        chunks: &[(String, Vec<f32>, String, usize)],  // (text, embedding, session_date, chunk_index)
+    ) -> Result<usize> {
+        let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let db = engine.database();
+        let model_name = self.backend.model_name();
+        let mut stored = 0usize;
+
+        let store = mindcore::memory::MemoryStore::<ConversationMemory>::new();
+
+        for (text, embedding, session_date, chunk_index) in chunks {
+            let record = ConversationMemory {
+                id: None,
+                content: text.clone(),
+                role: "chunk".to_string(),
+                session_index: 0,
+                turn_index: *chunk_index,
+                session_date: session_date.clone(),
+                created_at: Utc::now(),
+            };
+
+            match store.store(db, &record) {
+                Ok(StoreResult::Added(id)) => {
+                    let hash = {
+                        use sha2::Digest;
+                        format!("{:x}", sha2::Sha256::digest(text.as_bytes()))
+                    };
+                    mindcore::search::VectorSearch::store_vector(
+                        db, id, embedding, model_name, &hash,
+                    )?;
+                    // Update embedding status
+                    db.with_writer(|conn| {
+                        conn.execute(
+                            "UPDATE memories SET embedding_status = 'success' WHERE id = ?1",
+                            [id],
+                        )?;
+                        Ok(())
+                    })?;
+                    stored += 1;
+                }
+                Ok(StoreResult::Duplicate(_)) => {}
+                Err(e) => tracing::warn!("Failed to store cached chunk: {e}"),
+            }
+        }
+
+        Ok(stored)
+    }
+
     /// Flush all pending records into the engine via a single store_batch().
     fn flush_pending(&self) -> Result<(usize, usize)> {
         let records: Vec<ConversationMemory> = {

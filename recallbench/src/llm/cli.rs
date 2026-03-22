@@ -96,7 +96,7 @@ impl LLMClient for CliLLMClient {
         let output = child.wait_with_output().await
             .context("Failed to read CLI output")?;
 
-        if !output.status.success() {
+        if !output.status.success() && output.stdout.is_empty() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!(
                 "{} exited with status {}: {}",
