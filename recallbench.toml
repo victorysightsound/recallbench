@@ -1,6 +1,6 @@
 [defaults]
 concurrency = 10
-token_budget = 16384
+token_budget = 32768
 gen_model = "claude-sonnet"
 judge_model = "claude-sonnet"
 output_dir = "results"

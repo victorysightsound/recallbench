@@ -401,9 +401,17 @@ pub fn build_generation_prompt(
             "multi-session" => {
                 "Instructions: This question requires synthesizing information across multiple \
                  sessions. Answer step by step. \
-                 IMPORTANT: Before giving your final answer, enumerate ALL relevant items/facts \
-                 from EVERY session. Number each one explicitly. Do not skip any session. \
-                 Then compile your final answer from the complete list."
+                 IMPORTANT: \
+                 1. Scan through EVERY session in the history carefully. For each session, \
+                 note any items/facts relevant to the question. \
+                 2. Number each relevant item explicitly with its source session date. \
+                 3. Be thorough — if the question asks \"how many\" or to list items, you must \
+                 find ALL instances across ALL sessions. Missing even one will make your answer wrong. \
+                 4. ONLY count items from conversations where the USER directly mentions or discusses \
+                 the item. Do not count items from unrelated conversations that happen to mention \
+                 similar topics. \
+                 5. After enumerating, give your final count or answer. \
+                 6. If you are unsure whether something counts, include it but note your uncertainty."
                     .to_string()
             }
             _ => {

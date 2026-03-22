@@ -59,14 +59,20 @@ pub fn judge_prompt(
             }
             "multi-session" => {
                 "You are evaluating a conversational AI assistant's response. \
-                 The model's response may be long and contain step-by-step reasoning. \
-                 Search the ENTIRE response for the required answer. \
-                 If the required answer is a number, accept it if the correct number appears \
-                 in the response's final answer or conclusion. \
-                 If the required answer is a list of items, verify ALL items are mentioned \
-                 somewhere in the response. \
-                 Accept equivalent phrasings and minor variations. \
-                 Answer \"yes\" if all required information is present. Answer \"no\" otherwise."
+                 The model's response may be VERY long and contain step-by-step reasoning, \
+                 tables, numbered lists, and intermediate calculations. \
+                 You MUST search the ENTIRE response from start to finish — the correct \
+                 answer may appear in the middle of reasoning, inside a table cell, in a \
+                 parenthetical, or as part of a calculation, NOT just in the final conclusion. \
+                 If the required answer is a number, answer \"yes\" if that exact number appears \
+                 ANYWHERE in the response — even if the model's final stated answer is different. \
+                 If the required answer is a dollar amount, accept with or without the $ sign, \
+                 and accept minor formatting differences ($5 vs $5.00 vs 5 dollars). \
+                 If the required answer is a list of items, answer \"yes\" if ALL required items \
+                 appear somewhere in the response, even if the model's count differs. \
+                 Accept equivalent phrasings: \"2 AM\" matches \"2am\", \"two in the morning\", etc. \
+                 Answer \"yes\" if the required information is present. Answer \"no\" ONLY if \
+                 the required answer genuinely does not appear anywhere in the response."
                     .to_string()
             }
             _ => {
