@@ -989,7 +989,6 @@ async fn cmd_retrieval_test(
     // Filter questions
     let all_questions = ds.questions();
     let questions: Vec<&types::BenchmarkQuestion> = all_questions.iter()
-        .filter(|q| !q.is_abstention)
         .filter(|q| {
             if let Some(f) = filter {
                 f.split(',').any(|t| t.trim() == q.question_type)

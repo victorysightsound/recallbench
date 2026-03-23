@@ -71,6 +71,7 @@ impl QuestionRetrievalResult {
 #[derive(Debug, Clone)]
 pub struct RetrievalMetrics {
     pub total_questions: usize,
+    pub abstention_questions: usize,
     pub recall_at_10: f64,
     pub recall_at_20: f64,
     pub recall_at_50: f64,
@@ -82,38 +83,46 @@ pub struct RetrievalMetrics {
 
 impl RetrievalMetrics {
     pub fn compute(results: &[QuestionRetrievalResult]) -> Self {
-        let n = results.len() as f64;
+        // Separate regular and abstention questions
+        let regular: Vec<_> = results.iter()
+            .filter(|r| !r.answer_session_ids.is_empty())
+            .collect();
+        let abstention_count = results.len() - regular.len();
+
+        let n = regular.len() as f64;
         if n == 0.0 {
             return Self {
-                total_questions: 0,
+                total_questions: results.len(),
+                abstention_questions: abstention_count,
                 recall_at_10: 0.0, recall_at_20: 0.0,
                 recall_at_50: 0.0, recall_at_100: 0.0,
                 mrr: 0.0, hit_rate_all: 0.0, hit_rate_any: 0.0,
             };
         }
 
-        // Recall@K: average fraction of answer sessions found in top K
+        // Recall@K: average fraction of answer sessions found in top K (regular only)
         let recall_at = |k: usize| -> f64 {
-            results.iter().map(|r| {
+            regular.iter().map(|r| {
                 let total = r.answer_session_ids.len() as f64;
                 if total == 0.0 { return 1.0; }
                 r.found_at(k) as f64 / total
             }).sum::<f64>() / n
         };
 
-        // MRR: mean reciprocal rank
-        let mrr = results.iter().map(|r| r.reciprocal_rank()).sum::<f64>() / n;
+        // MRR: mean reciprocal rank (regular only)
+        let mrr = regular.iter().map(|r| r.reciprocal_rank()).sum::<f64>() / n;
 
-        // Hit rate (all): % of questions where ALL answer sessions found
-        let hit_all = results.iter().filter(|r| r.all_found()).count() as f64 / n;
+        // Hit rate (all): % of regular questions where ALL answer sessions found
+        let hit_all = regular.iter().filter(|r| r.all_found()).count() as f64 / n;
 
-        // Hit rate (any): % of questions where at least ONE answer session found
-        let hit_any = results.iter()
+        // Hit rate (any): % of regular questions where at least ONE answer session found
+        let hit_any = regular.iter()
             .filter(|r| r.answer_session_ranks.iter().any(|(_, rank)| rank.is_some()))
             .count() as f64 / n;
 
         Self {
             total_questions: results.len(),
+            abstention_questions: abstention_count,
             recall_at_10: recall_at(10),
             recall_at_20: recall_at(20),
             recall_at_50: recall_at(50),
@@ -125,7 +134,9 @@ impl RetrievalMetrics {
     }
 
     pub fn print_report(&self) {
-        println!("Retrieval Metrics ({} questions)", self.total_questions);
+        let regular = self.total_questions - self.abstention_questions;
+        println!("Retrieval Metrics ({} questions: {} regular, {} abstention)",
+            self.total_questions, regular, self.abstention_questions);
         println!("═══════════════════════════════════════");
         println!("  Recall@10:   {:.1}%", self.recall_at_10 * 100.0);
         println!("  Recall@20:   {:.1}%", self.recall_at_20 * 100.0);
@@ -153,8 +164,9 @@ pub async fn test_retrieval(
         .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
         .unwrap_or_default();
 
-    // Skip abstention questions (no answer sessions)
-    if answer_session_ids.is_empty() || question.is_abstention {
+    // For abstention questions: still run retrieval but expect NO answer sessions.
+    // We check that the context doesn't contain misleading content.
+    if answer_session_ids.is_empty() && !question.is_abstention {
         return Ok(QuestionRetrievalResult {
             question_id: question.id.clone(),
             question_type: question.question_type.clone(),
