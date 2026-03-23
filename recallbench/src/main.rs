@@ -241,6 +241,9 @@ enum Commands {
         /// Show detailed per-question failures
         #[arg(long)]
         verbose: bool,
+        /// Chunk size for session chunking (default: 1000)
+        #[arg(long, default_value = "1000")]
+        chunk_size: usize,
     },
 
     /// Launch local web UI to browse results
@@ -391,11 +394,11 @@ async fn main() -> Result<()> {
         }
         Commands::RetrievalTest {
             system: system_name, dataset, variant, budget, filter,
-            quick, quick_size, verbose,
+            quick, quick_size, verbose, chunk_size,
         } => {
             cmd_retrieval_test(
                 &system_name, &dataset, &variant, budget, filter.as_deref(),
-                quick, quick_size, verbose,
+                quick, quick_size, verbose, chunk_size,
             ).await
         }
         Commands::Serve { port, results_dir } => {
@@ -978,6 +981,7 @@ async fn cmd_retrieval_test(
     quick: bool,
     quick_size: Option<usize>,
     verbose: bool,
+    chunk_size: usize,
 ) -> Result<()> {
     let cfg = config::Config::load_default()?;
     let token_budget = budget.unwrap_or(cfg.defaults.token_budget);
@@ -1019,8 +1023,8 @@ async fn cmd_retrieval_test(
         questions
     };
 
-    println!("Retrieval Test — {} {} ({} questions, budget: {})",
-        dataset, variant, questions.len(), token_budget);
+    println!("Retrieval Test — {} {} ({} questions, budget: {}, chunk_size: {})",
+        dataset, variant, questions.len(), token_budget, chunk_size);
     println!("══════════════════════════════════════════════════════");
 
     // Create system
@@ -1043,13 +1047,15 @@ async fn cmd_retrieval_test(
         _ => anyhow::bail!("Unknown system: {system_name}"),
     };
 
-    // Check for embedding cache
+    // Check for embedding cache matching the chunk size
     let cache_path = {
         let model_name = "sentence-transformers/all-MiniLM-L6-v2";
-        if embedding_cache::EmbeddingCache::exists(dataset, variant, model_name) {
-            Some(embedding_cache::EmbeddingCache::cache_path(dataset, variant, model_name))
+        if embedding_cache::EmbeddingCache::exists_with_chunk_size(dataset, variant, model_name, chunk_size) {
+            let path = embedding_cache::EmbeddingCache::cache_path_with_chunk_size(dataset, variant, model_name, chunk_size);
+            tracing::info!("Using cached embeddings (chunk_size={chunk_size})");
+            Some(path)
         } else {
-            tracing::warn!("No embedding cache found — will use live embedding (slow)");
+            tracing::warn!("No embedding cache found for chunk_size={chunk_size} — will use live embedding");
             None
         }
     };

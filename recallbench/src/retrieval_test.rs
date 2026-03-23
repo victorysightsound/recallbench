@@ -17,6 +17,7 @@ pub struct QuestionRetrievalResult {
     pub question_id: String,
     pub question_type: String,
     pub question_text: String,
+    pub is_abstention: bool,
     pub answer_session_ids: Vec<String>,
     /// For each answer session, the best (lowest) rank at which a chunk appeared.
     /// None means the session was not found in results at all.
@@ -85,9 +86,9 @@ impl RetrievalMetrics {
     pub fn compute(results: &[QuestionRetrievalResult]) -> Self {
         // Separate regular and abstention questions
         let regular: Vec<_> = results.iter()
-            .filter(|r| !r.answer_session_ids.is_empty())
+            .filter(|r| !r.is_abstention && !r.answer_session_ids.is_empty())
             .collect();
-        let abstention_count = results.len() - regular.len();
+        let abstention_count = results.iter().filter(|r| r.is_abstention).count();
 
         let n = regular.len() as f64;
         if n == 0.0 {
@@ -138,13 +139,16 @@ impl RetrievalMetrics {
         println!("Retrieval Metrics ({} questions: {} regular, {} abstention)",
             self.total_questions, regular, self.abstention_questions);
         println!("═══════════════════════════════════════");
-        println!("  Recall@10:   {:.1}%", self.recall_at_10 * 100.0);
+        println!("  Recall@10:   {:.1}%  (regular questions only)", self.recall_at_10 * 100.0);
         println!("  Recall@20:   {:.1}%", self.recall_at_20 * 100.0);
         println!("  Recall@50:   {:.1}%", self.recall_at_50 * 100.0);
         println!("  Recall@100:  {:.1}%", self.recall_at_100 * 100.0);
         println!("  MRR:         {:.3}", self.mrr);
         println!("  Hit Rate:    {:.1}% (all answer sessions found)", self.hit_rate_all * 100.0);
         println!("  Any Found:   {:.1}% (at least one answer session)", self.hit_rate_any * 100.0);
+        if self.abstention_questions > 0 {
+            println!("  Abstention:  {} questions tested (retrieval runs, LLM must say \"I don't know\")", self.abstention_questions);
+        }
     }
 }
 
@@ -164,13 +168,13 @@ pub async fn test_retrieval(
         .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
         .unwrap_or_default();
 
-    // For abstention questions: still run retrieval but expect NO answer sessions.
-    // We check that the context doesn't contain misleading content.
+    // Skip questions with no answer_session_ids AND not abstention
     if answer_session_ids.is_empty() && !question.is_abstention {
         return Ok(QuestionRetrievalResult {
             question_id: question.id.clone(),
             question_type: question.question_type.clone(),
             question_text: question.question.clone(),
+            is_abstention: false,
             answer_session_ids,
             answer_session_ranks: Vec::new(),
             total_retrieved: 0,
@@ -281,6 +285,7 @@ pub async fn test_retrieval(
         question_id: question.id.clone(),
         question_type: question.question_type.clone(),
         question_text: question.question.clone(),
+        is_abstention: question.is_abstention,
         answer_session_ids,
         answer_session_ranks,
         total_retrieved: retrieval.items_retrieved,
