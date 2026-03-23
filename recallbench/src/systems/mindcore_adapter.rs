@@ -197,7 +197,7 @@ impl MemorySystem for MindCoreAdapter {
 
         // Chunk session turns into ~2000-char segments (larger = fewer embeddings, faster)
         let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
-        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 2000, 10);
+        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 1000, 10);
 
         let records: Vec<ConversationMemory> = chunks.iter().enumerate()
             .map(|(idx, chunk)| ConversationMemory {

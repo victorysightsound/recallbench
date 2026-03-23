@@ -628,14 +628,14 @@ async fn cmd_run(
             if let Some(key) = api_key {
                 let backend = mindcore::embeddings::ApiBackend::deepinfra_minilm(&key);
                 let cache = embedding_cache::EmbeddingCache::build(
-                    &dataset, &variant, ds.questions(), &backend, 2000, 10,
+                    &dataset, &variant, ds.questions(), &backend, 1000, 10,
                 )?;
                 Some(cache)
             } else {
                 tracing::warn!("No DeepInfra API key found, building cache with local model...");
                 let backend = mindcore::embeddings::CandleNativeBackend::new()?;
                 let cache = embedding_cache::EmbeddingCache::build(
-                    &dataset, &variant, ds.questions(), &backend, 2000, 10,
+                    &dataset, &variant, ds.questions(), &backend, 1000, 10,
                 )?;
                 Some(cache)
             }
