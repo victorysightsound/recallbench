@@ -5,14 +5,111 @@
 //! Zero LLM cost, instant feedback for tuning search parameters.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 use crate::traits::MemorySystem;
 use crate::types::BenchmarkQuestion;
 
+/// Settings that produced a retrieval test run. Saved alongside results
+/// so we know exactly what configuration produced each set of numbers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrievalRunConfig {
+    pub system: String,
+    pub dataset: String,
+    pub variant: String,
+    pub chunk_size: usize,
+    pub token_budget: usize,
+    pub total_questions: usize,
+    pub timestamp: String,
+    pub note: Option<String>,
+}
+
+/// A complete retrieval test run: config + per-question results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrievalRun {
+    pub config: RetrievalRunConfig,
+    pub results: Vec<QuestionRetrievalResult>,
+}
+
+impl RetrievalRun {
+    /// Save to a JSON file.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json)?;
+        tracing::info!("Retrieval results saved to {}", path.display());
+        Ok(())
+    }
+
+    /// Load from a JSON file.
+    pub fn load(path: &Path) -> Result<Self> {
+        let json = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&json)?)
+    }
+
+    /// Compute metrics for all results.
+    pub fn metrics(&self) -> RetrievalMetrics {
+        RetrievalMetrics::compute(&self.results)
+    }
+
+    /// Compute metrics filtered by question type.
+    pub fn metrics_for_type(&self, question_type: &str) -> RetrievalMetrics {
+        let filtered: Vec<QuestionRetrievalResult> = self.results.iter()
+            .filter(|r| r.question_type == question_type)
+            .cloned()
+            .collect();
+        RetrievalMetrics::compute(&filtered)
+    }
+
+    /// Get all unique question types in the results.
+    pub fn question_types(&self) -> Vec<String> {
+        let mut types: Vec<String> = self.results.iter()
+            .map(|r| r.question_type.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        types.sort();
+        types
+    }
+
+    /// Print full report with per-type breakdown.
+    pub fn print_full_report(&self) {
+        println!("Retrieval Run: {} {} (chunk_size={}, budget={})",
+            self.config.dataset, self.config.variant,
+            self.config.chunk_size, self.config.token_budget);
+        println!("Timestamp: {}", self.config.timestamp);
+        if let Some(ref note) = self.config.note {
+            println!("Note: {note}");
+        }
+        println!();
+
+        // Overall
+        println!("=== OVERALL ===");
+        self.metrics().print_report();
+        println!();
+
+        // Per type
+        println!("=== BY QUESTION TYPE ===");
+        println!("{:<25} {:>8} {:>10} {:>10} {:>10} {:>6} {:>8}",
+            "Type", "Count", "Recall@10", "Recall@20", "Recall@50", "MRR", "HitRate");
+        println!("{}", "-".repeat(85));
+
+        for qtype in self.question_types() {
+            let m = self.metrics_for_type(&qtype);
+            let regular = m.total_questions - m.abstention_questions;
+            let display_type = if qtype.len() > 24 { &qtype[..24] } else { &qtype };
+            println!("{:<25} {:>5}+{:<2} {:>9.1}% {:>9.1}% {:>9.1}% {:>5.3} {:>7.1}%",
+                display_type, regular, m.abstention_questions,
+                m.recall_at_10 * 100.0, m.recall_at_20 * 100.0,
+                m.recall_at_50 * 100.0, m.mrr, m.hit_rate_all * 100.0);
+        }
+    }
+}
+
 /// Results for a single question's retrieval test.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuestionRetrievalResult {
     pub question_id: String,
     pub question_type: String,
@@ -69,7 +166,7 @@ impl QuestionRetrievalResult {
 }
 
 /// Aggregate metrics across all questions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetrievalMetrics {
     pub total_questions: usize,
     pub abstention_questions: usize,

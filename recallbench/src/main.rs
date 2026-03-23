@@ -1080,18 +1080,40 @@ async fn cmd_retrieval_test(
     }
     pb.finish_with_message("Done");
 
-    // Compute and display metrics
-    let metrics = retrieval_test::RetrievalMetrics::compute(&results);
+    // Build the run record with config + results
+    let run = retrieval_test::RetrievalRun {
+        config: retrieval_test::RetrievalRunConfig {
+            system: system_name.to_string(),
+            dataset: dataset.to_string(),
+            variant: variant.to_string(),
+            chunk_size,
+            token_budget,
+            total_questions: results.len(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            note: None,
+        },
+        results,
+    };
+
+    // Save results to file
+    let results_dir = std::path::PathBuf::from("results/retrieval");
+    std::fs::create_dir_all(&results_dir)?;
+    let filename = format!("{}-{}-c{}-b{}.json",
+        dataset, variant, chunk_size, token_budget);
+    let save_path = results_dir.join(&filename);
+    run.save(&save_path)?;
+
+    // Print full report with per-type breakdown
     println!();
-    metrics.print_report();
+    run.print_full_report();
 
     if verbose {
-        retrieval_test::print_failures(&results);
+        retrieval_test::print_failures(&run.results);
     }
 
-    // Always show summary of worst questions
-    let mut worst: Vec<_> = results.iter()
-        .filter(|r| !r.answer_session_ids.is_empty())
+    // Show worst questions
+    let mut worst: Vec<_> = run.results.iter()
+        .filter(|r| !r.answer_session_ids.is_empty() && !r.is_abstention)
         .collect();
     worst.sort_by(|a, b| {
         let a_found = a.found_at(1000) as f64 / a.answer_session_ids.len().max(1) as f64;
