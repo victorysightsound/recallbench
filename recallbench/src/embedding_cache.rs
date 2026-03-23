@@ -40,16 +40,25 @@ impl EmbeddingCache {
             .join("embeddings")
     }
 
-    /// Path to the cache file for a given dataset/variant/model combination.
+    /// Path to the cache file for a given dataset/variant/model/chunk-size combination.
     pub fn cache_path(dataset: &str, variant: &str, model_name: &str) -> PathBuf {
-        // Sanitize model name for filesystem
+        Self::cache_path_with_chunk_size(dataset, variant, model_name, 1000)
+    }
+
+    /// Path with explicit chunk size in filename.
+    pub fn cache_path_with_chunk_size(dataset: &str, variant: &str, model_name: &str, chunk_size: usize) -> PathBuf {
         let safe_model = model_name.replace('/', "-");
-        Self::cache_dir().join(format!("{dataset}-{variant}-{safe_model}.db"))
+        Self::cache_dir().join(format!("{dataset}-{variant}-{safe_model}-c{chunk_size}.db"))
     }
 
     /// Check if a valid cache exists for this configuration.
     pub fn exists(dataset: &str, variant: &str, model_name: &str) -> bool {
-        let path = Self::cache_path(dataset, variant, model_name);
+        Self::exists_with_chunk_size(dataset, variant, model_name, 1000)
+    }
+
+    /// Check with explicit chunk size.
+    pub fn exists_with_chunk_size(dataset: &str, variant: &str, model_name: &str, chunk_size: usize) -> bool {
+        let path = Self::cache_path_with_chunk_size(dataset, variant, model_name, chunk_size);
         if !path.exists() {
             return false;
         }
@@ -82,7 +91,7 @@ impl EmbeddingCache {
         chunk_size: usize,
         min_turn_chars: usize,
     ) -> Result<Self> {
-        let path = Self::cache_path(dataset, variant, backend.model_name());
+        let path = Self::cache_path_with_chunk_size(dataset, variant, backend.model_name(), chunk_size);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
