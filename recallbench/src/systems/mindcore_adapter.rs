@@ -208,32 +208,10 @@ impl MindCoreAdapter {
             }
         }
 
-        // Also create RelatedTo edges for facts sharing the same subject
-        let mut subject_memories: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
-        for triple in &triples {
-            if let Some(&mem_id) = fact_to_memory.get(&triple.index) {
-                subject_memories.entry(triple.subject.to_lowercase())
-                    .or_default()
-                    .push(mem_id);
-            }
-        }
-
-        let mut related_edges = 0;
-        for (_subject, mem_ids) in &subject_memories {
-            let unique: Vec<i64> = {
-                let mut v = mem_ids.clone();
-                v.sort();
-                v.dedup();
-                v
-            };
-            if unique.len() > 1 {
-                // Connect all memories about the same entity
-                for pair in unique.windows(2) {
-                    let _ = GraphMemory::relate(db, pair[0], pair[1], &RelationType::RelatedTo);
-                    related_edges += 1;
-                }
-            }
-        }
+        // NOTE: RelatedTo edges disabled — they add too much noise by connecting
+        // all facts mentioning the same entity, flooding context with irrelevant facts.
+        // Only SupersededBy edges are useful for conflict resolution.
+        let related_edges = 0;
 
         tracing::info!(
             "Graph built: {} facts extracted, {} conflicts → {} superseded edges, {} related edges",
