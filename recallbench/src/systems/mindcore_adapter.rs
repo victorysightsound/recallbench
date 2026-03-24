@@ -156,6 +156,93 @@ impl MindCoreAdapter {
         Ok(stored)
     }
 
+    /// Extract fact triples from stored memories and build graph edges.
+    ///
+    /// Scans all memories for structured fact patterns, detects conflicting facts,
+    /// and creates SupersededBy edges between outdated and current facts.
+    fn build_graph_from_facts(&self) -> Result<()> {
+        use mindcore::ingest::fact_extraction;
+        use mindcore::memory::{GraphMemory, RelationType};
+
+        let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let db = engine.database();
+
+        // Load all stored memory texts
+        let memories: Vec<(i64, String)> = db.with_reader(|conn| {
+            let mut stmt = conn.prepare("SELECT id, searchable_text FROM memories ORDER BY id")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        })?;
+
+        // Concatenate all memory texts and extract facts
+        let all_text = memories.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join("\n");
+        let (triples, conflicts) = fact_extraction::extract_facts(&all_text);
+
+        if triples.is_empty() {
+            return Ok(());
+        }
+
+        // Build a map from fact text → memory_id (find which memory contains each fact)
+        let mut fact_to_memory: std::collections::HashMap<usize, i64> = std::collections::HashMap::new();
+        for (mem_id, text) in &memories {
+            for triple in &triples {
+                if text.contains(&triple.original) {
+                    fact_to_memory.insert(triple.index, *mem_id);
+                }
+            }
+        }
+
+        // Create SupersededBy edges for conflicting facts
+        let mut edges_created = 0;
+        for conflict in &conflicts {
+            let old_mem = fact_to_memory.get(&conflict.old_fact.index);
+            let new_mem = fact_to_memory.get(&conflict.new_fact.index);
+            if let (Some(&old_id), Some(&new_id)) = (old_mem, new_mem) {
+                if old_id != new_id {
+                    // Old fact's memory is superseded by new fact's memory
+                    let _ = GraphMemory::relate(db, old_id, new_id, &RelationType::SupersededBy);
+                    edges_created += 1;
+                }
+            }
+        }
+
+        // Also create RelatedTo edges for facts sharing the same subject
+        let mut subject_memories: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+        for triple in &triples {
+            if let Some(&mem_id) = fact_to_memory.get(&triple.index) {
+                subject_memories.entry(triple.subject.to_lowercase())
+                    .or_default()
+                    .push(mem_id);
+            }
+        }
+
+        let mut related_edges = 0;
+        for (_subject, mem_ids) in &subject_memories {
+            let unique: Vec<i64> = {
+                let mut v = mem_ids.clone();
+                v.sort();
+                v.dedup();
+                v
+            };
+            if unique.len() > 1 {
+                // Connect all memories about the same entity
+                for pair in unique.windows(2) {
+                    let _ = GraphMemory::relate(db, pair[0], pair[1], &RelationType::RelatedTo);
+                    related_edges += 1;
+                }
+            }
+        }
+
+        tracing::info!(
+            "Graph built: {} facts extracted, {} conflicts → {} superseded edges, {} related edges",
+            triples.len(), conflicts.len(), edges_created, related_edges
+        );
+
+        Ok(())
+    }
+
     /// Flush all pending records into the engine via a single store_batch().
     fn flush_pending(&self) -> Result<(usize, usize)> {
         let records: Vec<ConversationMemory> = {
@@ -234,6 +321,11 @@ impl MemorySystem for MindCoreAdapter {
         let (stored, _dupes) = self.flush_pending()?;
         if stored > 0 {
             tracing::info!("Batch embedded {stored} chunks");
+
+            // If graph expansion is enabled, extract facts and build graph edges
+            if self.assembly_config.graph_depth > 0 {
+                self.build_graph_from_facts()?;
+            }
         }
 
         let start = std::time::Instant::now();
