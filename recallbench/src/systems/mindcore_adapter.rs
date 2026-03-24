@@ -51,6 +51,8 @@ pub struct MindCoreAdapter {
     pending: Mutex<Vec<ConversationMemory>>,
     /// Reusable embedding backend — shared Arc avoids reloading model on reset().
     backend: std::sync::Arc<dyn EmbeddingBackend>,
+    /// Assembly configuration (diversification, recency, etc.)
+    assembly_config: mindcore::context::AssemblyConfig,
 }
 
 impl MindCoreAdapter {
@@ -86,7 +88,14 @@ impl MindCoreAdapter {
             engine: Mutex::new(engine),
             pending: Mutex::new(Vec::new()),
             backend,
+            assembly_config: mindcore::context::AssemblyConfig::default(),
         })
+    }
+
+    /// Set the assembly configuration (diversification, recency, etc.)
+    pub fn with_assembly_config(mut self, config: mindcore::context::AssemblyConfig) -> Self {
+        self.assembly_config = config;
+        self
     }
 
     /// Load pre-computed chunks from the embedding cache.
@@ -230,7 +239,7 @@ impl MemorySystem for MindCoreAdapter {
         let start = std::time::Instant::now();
         let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let budget = ContextBudget::new(token_budget);
-        let assembly = engine.assemble_context(query, &budget)?;
+        let assembly = engine.assemble_context_with_config(query, &budget, &self.assembly_config)?;
         let context: String = assembly.items.iter().map(|item| item.content.as_str()).collect::<Vec<_>>().join("\n");
 
         Ok(RetrievalResult {

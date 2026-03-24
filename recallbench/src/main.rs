@@ -612,6 +612,17 @@ async fn cmd_run(
                     Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
                 }
             },
+            #[cfg(feature = "mindcore-adapter")]
+            "mindcore-mab" => {
+                let key_output = std::process::Command::new("sh")
+                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+                    .output()?;
+                let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+                Box::new(
+                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
+                        .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
+                )
+            },
             #[cfg(feature = "memloft-adapter")]
             "memloft" => Box::new(systems::memloft_adapter::MemloftAdapter::new()?),
             _ => anyhow::bail!("Unknown system: {system_name}. Use --system-config for custom systems."),
@@ -1044,12 +1055,17 @@ async fn cmd_retrieval_test(
         #[cfg(feature = "mindcore-adapter")]
         "mindcore" => Box::new(systems::mindcore_adapter::MindCoreAdapter::new()?),
         #[cfg(feature = "mindcore-adapter")]
-        "mindcore-api" | "mindcore-fallback" => {
+        "mindcore-api" | "mindcore-fallback" | "mindcore-mab" => {
             let key_output = std::process::Command::new("sh")
                 .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
                 .output()?;
             let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
-            if system_name == "mindcore-api" {
+            if system_name == "mindcore-mab" {
+                Box::new(
+                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
+                        .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
+                )
+            } else if system_name == "mindcore-api" {
                 Box::new(systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?)
             } else {
                 Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
