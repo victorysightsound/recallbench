@@ -31,6 +31,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod datasets;
 pub mod retrieval_test;
+pub mod session_cache;
 pub mod errors;
 pub mod judge;
 pub mod llm;

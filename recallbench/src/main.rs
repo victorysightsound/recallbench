@@ -15,6 +15,7 @@ mod resume;
 mod retrieval_test;
 mod runner;
 mod sampling;
+mod session_cache;
 mod systems;
 mod traits;
 mod types;
@@ -246,6 +247,13 @@ enum Commands {
         chunk_size: usize,
     },
 
+    /// Build raw session caches for datasets (no embedding, instant)
+    CacheSessions {
+        /// Dataset name (or "all" for LongMemEval + ConvoMem + MemoryAgentBench)
+        #[arg(long, default_value = "all")]
+        dataset: String,
+    },
+
     /// Launch local web UI to browse results
     Serve {
         /// Port to listen on
@@ -400,6 +408,9 @@ async fn main() -> Result<()> {
                 &system_name, &dataset, &variant, budget, filter.as_deref(),
                 quick, quick_size, verbose, chunk_size,
             ).await
+        }
+        Commands::CacheSessions { dataset: ds_name } => {
+            cmd_cache_sessions(&ds_name).await
         }
         Commands::Serve { port, results_dir } => {
             web::serve(port, results_dir).await
@@ -1130,6 +1141,67 @@ async fn cmd_retrieval_test(
             &r.question_id[..r.question_id.len().min(12)],
             &r.question_type[..r.question_type.len().min(15)],
             found, total, missing);
+    }
+
+    Ok(())
+}
+
+async fn cmd_cache_sessions(dataset_filter: &str) -> Result<()> {
+    let registry = datasets::DatasetRegistry::new();
+
+    // Define the priority datasets and their variants
+    let targets: Vec<(&str, Vec<&str>)> = match dataset_filter {
+        "all" => vec![
+            ("longmemeval", vec!["small"]),
+            ("convomem", vec!["user_evidence", "assistant_facts", "changing", "abstention", "preference", "implicit_connection"]),
+            ("memoryagentbench", vec!["conflict_resolution", "accurate_retrieval", "long_range", "test_time_learning"]),
+        ],
+        other => {
+            // Load default variant
+            if let Some(info) = registry.get(other) {
+                vec![(other, info.variants.iter().map(|s| s.as_str()).collect())]
+            } else {
+                anyhow::bail!("Unknown dataset: {other}");
+            }
+        }
+    };
+
+    for (dataset, variants) in &targets {
+        for variant in variants {
+            if session_cache::SessionCache::exists(dataset, variant) {
+                let cache = session_cache::SessionCache::open(dataset, variant)?;
+                let stats = cache.stats()?;
+                println!("✓ {stats}");
+                continue;
+            }
+
+            println!("Downloading {dataset}/{variant}...");
+            match registry.load(dataset, variant, false).await {
+                Ok(ds) => {
+                    let cache = session_cache::SessionCache::build(
+                        dataset, variant, ds.questions(),
+                    )?;
+                    let stats = cache.stats()?;
+                    println!("✓ {stats}");
+                }
+                Err(e) => {
+                    tracing::error!("Failed to load {dataset}/{variant}: {e}");
+                    println!("✗ {dataset}/{variant}: {e}");
+                }
+            }
+        }
+    }
+
+    // Summary
+    println!("\nSession caches:");
+    let cache_dir = session_cache::SessionCache::cache_path("_", "_")
+        .parent().unwrap().to_path_buf();
+    if cache_dir.exists() {
+        for entry in std::fs::read_dir(&cache_dir)? {
+            let entry = entry?;
+            let size = entry.metadata()?.len();
+            println!("  {} ({:.1}MB)", entry.file_name().to_string_lossy(), size as f64 / 1024.0 / 1024.0);
+        }
     }
 
     Ok(())
