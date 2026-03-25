@@ -278,6 +278,55 @@ enum Commands {
         max_chars: usize,
     },
 
+    /// Test full pipeline: extraction → storage → graph → search (modular, each step toggleable)
+    PipelineTest {
+        /// System name (mindcore-extract for full pipeline)
+        #[arg(long, default_value = "mindcore-extract")]
+        system: String,
+        /// Dataset name
+        #[arg(long, default_value = "memoryagentbench")]
+        dataset: String,
+        /// Dataset variant
+        #[arg(long, default_value = "conflict_resolution")]
+        variant: String,
+        /// Token budget
+        #[arg(long, default_value = "16384")]
+        budget: usize,
+        /// Enable LLM extraction (requires --extract-model)
+        #[arg(long)]
+        extraction: bool,
+        /// LLM model for extraction (DeepInfra model name or "haiku" for CLI)
+        #[arg(long)]
+        extract_model: Option<String>,
+        /// Enable graph edge creation
+        #[arg(long)]
+        graph: bool,
+        /// Enable vector embedding
+        #[arg(long, default_value = "true")]
+        embedding: bool,
+        /// Enable deduplication
+        #[arg(long, default_value = "true")]
+        dedup: bool,
+        /// Recency boost (0.0 = off)
+        #[arg(long, default_value = "0.0")]
+        recency: f32,
+        /// Max chunks per session (0 = unlimited)
+        #[arg(long, default_value = "1")]
+        max_per_session: usize,
+        /// Chunk size for non-extraction mode
+        #[arg(long, default_value = "1000")]
+        chunk_size: usize,
+        /// Quick mode
+        #[arg(long)]
+        quick: bool,
+        /// Quick mode question count
+        #[arg(long, default_value = "10")]
+        quick_size: Option<usize>,
+        /// Show verbose output
+        #[arg(long)]
+        verbose: bool,
+    },
+
     /// Launch local web UI to browse results
     Serve {
         /// Port to listen on
@@ -437,6 +486,17 @@ async fn main() -> Result<()> {
             dataset, variant, model, quick, quick_size, max_chars,
         } => {
             cmd_extraction_test(&dataset, &variant, &model, quick, quick_size, max_chars).await
+        }
+        Commands::PipelineTest {
+            system: system_name, dataset, variant, budget, extraction,
+            extract_model, graph, embedding, dedup, recency, max_per_session,
+            chunk_size, quick, quick_size, verbose,
+        } => {
+            cmd_pipeline_test(
+                &system_name, &dataset, &variant, budget, extraction,
+                extract_model.as_deref(), graph, embedding, dedup, recency,
+                max_per_session, chunk_size, quick, quick_size, verbose,
+            ).await
         }
         Commands::CacheSessions { dataset: ds_name } => {
             cmd_cache_sessions(&ds_name).await
@@ -1381,6 +1441,195 @@ async fn cmd_extraction_test(
     std::fs::create_dir_all(&results_dir)?;
     let filename = format!("{}-{}.json", dataset, variant);
     extraction_test::save_results(&all_results, &results_dir.join(&filename))?;
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_pipeline_test(
+    _system_name: &str,
+    dataset: &str,
+    variant: &str,
+    budget: usize,
+    extraction: bool,
+    extract_model: Option<&str>,
+    graph: bool,
+    embedding: bool,
+    dedup: bool,
+    recency: f32,
+    max_per_session: usize,
+    chunk_size: usize,
+    quick: bool,
+    quick_size: Option<usize>,
+    verbose: bool,
+) -> Result<()> {
+    // Build the pipeline config
+    let config = pipeline_test::PipelineConfig {
+        dataset: dataset.to_string(),
+        variant: variant.to_string(),
+        use_extraction: extraction,
+        use_graph: graph,
+        use_embedding: embedding,
+        recency_weight: recency,
+        max_per_session,
+        token_budget: budget,
+        llm_model: extract_model.unwrap_or("").to_string(),
+    };
+
+    println!("Pipeline Test — {} {}", dataset, variant);
+    println!("══════════════════════════════════════════════════════");
+    println!("  Extraction:      {}", if extraction { format!("ON (model: {})", config.llm_model) } else { "OFF (chunk mode)".to_string() });
+    println!("  Graph:           {}", if graph { "ON" } else { "OFF" });
+    println!("  Embedding:       {}", if embedding { "ON" } else { "OFF (FTS5 only)" });
+    println!("  Dedup:           {}", if dedup { "ON" } else { "OFF" });
+    println!("  Recency:         {}", if recency > 0.0 { format!("{recency}") } else { "OFF".to_string() });
+    println!("  Max/session:     {}", if max_per_session == 0 { "unlimited".to_string() } else { max_per_session.to_string() });
+    println!("  Token budget:    {budget}");
+    if !extraction {
+        println!("  Chunk size:      {chunk_size}");
+    }
+    println!();
+
+    // Validate: extraction requires a model
+    if extraction && config.llm_model.is_empty() {
+        anyhow::bail!("Extraction enabled but no --extract-model specified. Use --extract-model <model> or --extract-model haiku");
+    }
+
+    // Get API key
+    let key_output = std::process::Command::new("sh")
+        .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+        .output()?;
+    let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+
+    // Build the MindCore adapter with configured features
+    let mut adapter = systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
+        .with_assembly_config(mindcore::context::AssemblyConfig {
+            max_per_session,
+            recency_boost: recency,
+            search_limit: 200,
+            graph_depth: if graph { 2 } else { 0 },
+        });
+
+    // Set engine config toggles
+    {
+        let engine = adapter.engine_mut();
+        engine.config.embedding_enabled = embedding;
+        engine.config.graph_enabled = graph;
+        engine.config.dedup_enabled = dedup;
+    }
+
+    // Add LLM if extraction is enabled
+    if extraction {
+        let llm: Box<dyn mindcore::traits::LlmCallback> = if config.llm_model == "haiku" {
+            Box::new(mindcore::llm::CliLlmCallback::claude("haiku"))
+        } else {
+            Box::new(mindcore::llm::ApiLlmCallback::new(
+                "https://api.deepinfra.com/v1/openai",
+                &api_key,
+                &config.llm_model,
+            ))
+        };
+        adapter = adapter.with_llm(llm);
+    }
+
+    let system: Box<dyn traits::MemorySystem> = Box::new(adapter);
+
+    // Load dataset
+    let registry = datasets::DatasetRegistry::new();
+    let ds = registry.load(dataset, variant, false).await?;
+
+    let all_questions = ds.questions();
+    let questions: Vec<&types::BenchmarkQuestion> = if quick {
+        let n = quick_size.unwrap_or(10);
+        all_questions.iter().take(n).collect()
+    } else {
+        all_questions.iter().collect()
+    };
+
+    println!("Testing {} questions...\n", questions.len());
+
+    // Run each question through the pipeline
+    let mut results = Vec::new();
+
+    for question in &questions {
+        system.reset().await?;
+
+        // Ingest
+        let ingest_start = std::time::Instant::now();
+        for session in &question.sessions {
+            system.ingest_session(session).await?;
+        }
+        let _ingest_ms = ingest_start.elapsed().as_millis() as u64;
+
+        // Retrieve
+        let retrieval_start = std::time::Instant::now();
+        let retrieval = system.retrieve_context(
+            &question.question,
+            question.question_date.as_deref(),
+            budget,
+        ).await?;
+        let retrieval_ms = retrieval_start.elapsed().as_millis() as u64;
+
+        // Check if answer is in retrieved context
+        let gt = question.ground_truth.join(", ");
+        let answer_in_context = gt.split_whitespace()
+            .filter(|w| w.len() > 3)
+            .any(|word| retrieval.context.to_lowercase().contains(&word.to_lowercase()));
+
+        let qr = pipeline_test::QuestionResult {
+            question_id: question.id.clone(),
+            question_text: question.question.clone(),
+            ground_truth: gt.clone(),
+            answer_in_context,
+            tokens_used: retrieval.tokens_used,
+            retrieval_ms,
+        };
+
+        if verbose {
+            let status = if answer_in_context { "✓" } else { "✗" };
+            println!("  {} {} [{}] tokens={} ({:.0}ms)",
+                status, &question.id[..question.id.len().min(15)],
+                &question.question_type[..question.question_type.len().min(20)],
+                retrieval.tokens_used, retrieval_ms);
+        }
+
+        results.push(qr);
+    }
+
+    // Compute stats
+    let total = results.len();
+    let found = results.iter().filter(|r| r.answer_in_context).count();
+    let avg_tokens: usize = if total > 0 { results.iter().map(|r| r.tokens_used).sum::<usize>() / total } else { 0 };
+    let avg_ms: u64 = if total > 0 { results.iter().map(|r| r.retrieval_ms).sum::<u64>() / total as u64 } else { 0 };
+
+    let pipeline_result = pipeline_test::PipelineResult {
+        config: config.clone(),
+        extraction_stats: pipeline_test::ExtractionStats {
+            total_facts: 0, // TODO: track from extraction
+            total_entities: 0,
+            total_relationships: 0,
+            graph_edges: 0,
+            extraction_ms: 0,
+        },
+        retrieval_stats: pipeline_test::RetrievalStats {
+            total_questions: total,
+            answer_in_context: found,
+            answer_accuracy: if total > 0 { found as f64 / total as f64 } else { 0.0 },
+            avg_tokens_used: avg_tokens,
+            avg_retrieval_ms: avg_ms,
+        },
+        per_question: results,
+    };
+
+    println!();
+    pipeline_result.print_report();
+
+    // Save results
+    let results_dir = std::path::PathBuf::from("results/pipeline");
+    std::fs::create_dir_all(&results_dir)?;
+    let filename = format!("{}-{}-{}.json", dataset, variant,
+        chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+    pipeline_result.save(&results_dir.join(&filename))?;
 
     Ok(())
 }

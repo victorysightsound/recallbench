@@ -102,6 +102,11 @@ impl MindCoreAdapter {
         self
     }
 
+    /// Get mutable access to the engine for config changes.
+    pub fn engine_mut(&mut self) -> &mut MemoryEngine<ConversationMemory> {
+        self.engine.get_mut().expect("engine lock poisoned")
+    }
+
     /// Enable LLM extraction during ingest.
     /// When set, ingest_session() extracts individual facts via LLM
     /// instead of chunking raw text.
