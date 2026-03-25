@@ -8,6 +8,7 @@ mod embedding_cache;
 mod errors;
 mod extraction_test;
 mod judge;
+mod pipeline_test;
 mod llm;
 mod longevity;
 mod metrics;

@@ -31,6 +31,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod datasets;
 pub mod extraction_test;
+pub mod pipeline_test;
 pub mod retrieval_test;
 pub mod session_cache;
 pub mod errors;
