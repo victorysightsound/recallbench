@@ -292,8 +292,8 @@ impl MemorySystem for MindCoreAdapter {
             let result = engine.store_with_extraction(&full_text, llm.as_ref())?;
 
             return Ok(IngestStats {
-                memories_stored: result.facts.len(),
-                duplicates_skipped: 0,
+                memories_stored: result.memories_stored,
+                duplicates_skipped: result.duplicates_skipped,
                 duration_ms: start.elapsed().as_millis() as u64,
             });
         }
