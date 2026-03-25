@@ -37,7 +37,7 @@ which = { workspace = true }
 open = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
-mindcore = { path = "../../mindcore", optional = true, features = ["vector-search", "api-embeddings"] }
+mindcore = { path = "../../mindcore", optional = true, features = ["vector-search", "api-embeddings", "api-llm", "llm-ingest"] }
 memloft-core = { path = "../../memloft/memloft-core", optional = true }
 
 [features]

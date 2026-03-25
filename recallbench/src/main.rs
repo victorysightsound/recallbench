@@ -6,6 +6,7 @@ mod datasets;
 #[cfg(feature = "mindcore-adapter")]
 mod embedding_cache;
 mod errors;
+mod extraction_test;
 mod judge;
 mod llm;
 mod longevity;
@@ -254,6 +255,28 @@ enum Commands {
         dataset: String,
     },
 
+    /// Test LLM extraction quality without search (extraction cost only)
+    ExtractionTest {
+        /// Dataset name
+        #[arg(long, default_value = "memoryagentbench")]
+        dataset: String,
+        /// Dataset variant
+        #[arg(long, default_value = "conflict_resolution")]
+        variant: String,
+        /// LLM model for extraction (via DeepInfra API)
+        #[arg(long, default_value = "meta-llama/Llama-3.3-70B-Instruct-Turbo")]
+        model: String,
+        /// Quick mode: test a subset
+        #[arg(long)]
+        quick: bool,
+        /// Number of sessions in quick mode
+        #[arg(long, default_value = "2")]
+        quick_size: Option<usize>,
+        /// Max chars per extraction call (split large sessions)
+        #[arg(long, default_value = "8000")]
+        max_chars: usize,
+    },
+
     /// Launch local web UI to browse results
     Serve {
         /// Port to listen on
@@ -408,6 +431,11 @@ async fn main() -> Result<()> {
                 &system_name, &dataset, &variant, budget, filter.as_deref(),
                 quick, quick_size, verbose, chunk_size,
             ).await
+        }
+        Commands::ExtractionTest {
+            dataset, variant, model, quick, quick_size, max_chars,
+        } => {
+            cmd_extraction_test(&dataset, &variant, &model, quick, quick_size, max_chars).await
         }
         Commands::CacheSessions { dataset: ds_name } => {
             cmd_cache_sessions(&ds_name).await
@@ -1219,6 +1247,121 @@ async fn cmd_cache_sessions(dataset_filter: &str) -> Result<()> {
             println!("  {} ({:.1}MB)", entry.file_name().to_string_lossy(), size as f64 / 1024.0 / 1024.0);
         }
     }
+
+    Ok(())
+}
+
+async fn cmd_extraction_test(
+    dataset: &str,
+    variant: &str,
+    model: &str,
+    quick: bool,
+    quick_size: Option<usize>,
+    max_chars: usize,
+) -> Result<()> {
+    // Get API key for DeepInfra
+    let key_output = std::process::Command::new("sh")
+        .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+        .output()?;
+    let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+    if api_key.is_empty() {
+        anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
+    }
+
+    let llm = mindcore::llm::ApiLlmCallback::new(
+        "https://api.deepinfra.com/v1/openai",
+        &api_key,
+        model,
+    );
+
+    println!("Extraction Test — {} {} (model: {})", dataset, variant, model);
+    println!("══════════════════════════════════════════════════════");
+
+    // Load sessions from session cache
+    if !session_cache::SessionCache::exists(dataset, variant) {
+        anyhow::bail!("No session cache for {dataset}/{variant}. Run: recallbench cache-sessions");
+    }
+    let cache = session_cache::SessionCache::open(dataset, variant)?;
+    let stats = cache.stats()?;
+    println!("Sessions: {}, Turns: {}", stats.total_sessions, stats.total_turns);
+
+    // Load all session IDs
+    let conn = rusqlite::Connection::open(cache.path())?;
+    let mut stmt = conn.prepare("SELECT session_id, total_chars FROM sessions ORDER BY total_chars ASC")?;
+    let sessions: Vec<(String, usize)> = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
+    })?.filter_map(|r| r.ok()).collect();
+
+    let sessions_to_test = if quick {
+        let n = quick_size.unwrap_or(2);
+        sessions.into_iter().take(n).collect::<Vec<_>>()
+    } else {
+        sessions
+    };
+
+    println!("Testing {} sessions...\n", sessions_to_test.len());
+
+    let mut all_results = Vec::new();
+
+    for (session_id, total_chars) in &sessions_to_test {
+        let loaded = cache.load_sessions(&[session_id.as_str()])?;
+        if loaded.is_empty() {
+            continue;
+        }
+
+        let full_text: String = loaded[0].turns.iter()
+            .map(|t| format!("{}: {}", t.role, t.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Split into chunks if too large
+        let chunks: Vec<String> = if full_text.len() > max_chars {
+            let mut result = Vec::new();
+            let mut remaining = full_text.as_str();
+            while !remaining.is_empty() {
+                let split_at = if remaining.len() <= max_chars {
+                    remaining.len()
+                } else {
+                    remaining[..max_chars].rfind('\n')
+                        .map(|p| p + 1)
+                        .unwrap_or(max_chars)
+                };
+                result.push(remaining[..split_at].to_string());
+                remaining = &remaining[split_at..];
+            }
+            result
+        } else {
+            vec![full_text]
+        };
+
+        println!("  Session {} ({} chars, {} extraction chunks)", session_id, total_chars, chunks.len());
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let chunk_id = format!("{}_{}", session_id, i);
+            match extraction_test::test_extraction(&chunk_id, chunk, &llm) {
+                Ok(result) => {
+                    println!("    Chunk {}: {} facts, {} entities, {} rels ({}ms)",
+                        i, result.facts_extracted, result.entities_found.len(),
+                        result.relationships_found.len(), result.extraction_ms);
+                    all_results.push(result);
+                }
+                Err(e) => {
+                    tracing::error!("Extraction failed for {}: {e}", chunk_id);
+                }
+            }
+        }
+    }
+
+    // Compute and display metrics
+    let metrics = extraction_test::ExtractionMetrics::compute(&all_results);
+    println!();
+    metrics.print_report();
+
+    // Save results
+    let results_dir = std::path::PathBuf::from("results/extraction");
+    std::fs::create_dir_all(&results_dir)?;
+    let filename = format!("{}-{}.json", dataset, variant);
+    extraction_test::save_results(&all_results, &results_dir.join(&filename))?;
 
     Ok(())
 }
