@@ -265,7 +265,7 @@ enum Commands {
         #[arg(long, default_value = "conflict_resolution")]
         variant: String,
         /// LLM model for extraction (via DeepInfra API)
-        #[arg(long, default_value = "meta-llama/Llama-3.3-70B-Instruct-Turbo")]
+        #[arg(long, default_value = "")]
         model: String,
         /// Quick mode: test a subset
         #[arg(long)]
@@ -652,6 +652,23 @@ async fn cmd_run(
                         .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
                 )
             },
+            #[cfg(feature = "mindcore-adapter")]
+            "mindcore-extract" => {
+                let key_output = std::process::Command::new("sh")
+                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+                    .output()?;
+                let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+                let llm = Box::new(mindcore::llm::ApiLlmCallback::new(
+                    "https://api.deepinfra.com/v1/openai",
+                    &api_key,
+                    "",
+                ));
+                Box::new(
+                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
+                        .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
+                        .with_llm(llm)
+                )
+            },
             #[cfg(feature = "memloft-adapter")]
             "memloft" => Box::new(systems::memloft_adapter::MemloftAdapter::new()?),
             _ => anyhow::bail!("Unknown system: {system_name}. Use --system-config for custom systems."),
@@ -663,7 +680,8 @@ async fn cmd_run(
     let judge_llm = create_llm_client(judge_model, &cfg)?;
 
     // Build or load embedding cache if system supports it
-        let embedding_cache = if system.supports_precomputed() {
+    // Skip cache for extraction-based systems (they do their own ingest)
+        let embedding_cache = if system.supports_precomputed() && system_name != "mindcore-extract" {
         let model_name = "sentence-transformers/all-MiniLM-L6-v2";
         if embedding_cache::EmbeddingCache::exists(&dataset, &variant, model_name) {
             tracing::info!("Using cached embeddings for {dataset}/{variant}");

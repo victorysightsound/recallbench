@@ -53,6 +53,9 @@ pub struct MindCoreAdapter {
     backend: std::sync::Arc<dyn EmbeddingBackend>,
     /// Assembly configuration (diversification, recency, etc.)
     assembly_config: mindcore::context::AssemblyConfig,
+    /// Optional LLM callback for extraction-based ingest.
+    /// When set, ingest_session() uses store_with_extraction() instead of chunking.
+    llm: Option<Box<dyn mindcore::traits::LlmCallback>>,
 }
 
 impl MindCoreAdapter {
@@ -89,12 +92,21 @@ impl MindCoreAdapter {
             pending: Mutex::new(Vec::new()),
             backend,
             assembly_config: mindcore::context::AssemblyConfig::default(),
+            llm: None,
         })
     }
 
     /// Set the assembly configuration (diversification, recency, etc.)
     pub fn with_assembly_config(mut self, config: mindcore::context::AssemblyConfig) -> Self {
         self.assembly_config = config;
+        self
+    }
+
+    /// Enable LLM extraction during ingest.
+    /// When set, ingest_session() extracts individual facts via LLM
+    /// instead of chunking raw text.
+    pub fn with_llm(mut self, llm: Box<dyn mindcore::traits::LlmCallback>) -> Self {
+        self.llm = Some(llm);
         self
     }
 
@@ -269,7 +281,24 @@ impl MemorySystem for MindCoreAdapter {
         let start = std::time::Instant::now();
         let session_date = session.date.clone().unwrap_or_default();
 
-        // Chunk session turns into ~2000-char segments (larger = fewer embeddings, faster)
+        // If LLM extraction is enabled, use store_with_extraction()
+        if let Some(ref llm) = self.llm {
+            let full_text: String = session.turns.iter()
+                .map(|t| format!("{}: {}", t.role, t.content))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let result = engine.store_with_extraction(&full_text, llm.as_ref())?;
+
+            return Ok(IngestStats {
+                memories_stored: result.facts.len(),
+                duplicates_skipped: 0,
+                duration_ms: start.elapsed().as_millis() as u64,
+            });
+        }
+
+        // Fallback: chunk-based ingest (no LLM)
         let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
         let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 1000, 10);
 
