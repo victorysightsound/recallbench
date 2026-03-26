@@ -37,13 +37,13 @@ which = { workspace = true }
 open = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
-mindcore = { path = "../../mindcore", optional = true, features = ["vector-search", "api-embeddings", "api-llm", "cli-llm", "llm-ingest"] }
+femind = { path = "../../fe-suite/fe-mind", optional = true, features = ["vector-search", "api-embeddings", "api-llm", "cli-llm", "llm-ingest"] }
 memloft-core = { path = "../../memloft/memloft-core", optional = true }
 
 [features]
-default = ["mindcore-adapter"]
-mindcore-adapter = ["dep:mindcore"]
-memloft-adapter = ["dep:memloft-core", "dep:mindcore"]
+default = ["femind-adapter"]
+femind-adapter = ["dep:femind"]
+memloft-adapter = ["dep:memloft-core", "dep:femind"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

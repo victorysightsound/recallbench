@@ -1,5 +1,5 @@
 /// Generate a judge prompt for evaluating an answer.
-/// Ported from mindcore-bench v3 for result parity.
+/// Ported from the historical femind benchmark prompts for result parity.
 pub fn judge_prompt(
     question_type: &str,
     question: &str,

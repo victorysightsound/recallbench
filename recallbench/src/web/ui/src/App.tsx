@@ -132,7 +132,7 @@ const formatDate = (iso: string) => {
     " " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 };
 
-/** Turn a filename like "mindcore-longmemeval-v3-verify.jsonl" into "MindCore LongMemEval v3 Verify" */
+/** Turn a filename like "femind-longmemeval-v3-verify.jsonl" into "Femind LongMemEval v3 Verify" */
 const humanizeName = (filename: string) => {
   return filename
     .replace(/\.jsonl?$/, "")

@@ -97,10 +97,10 @@ impl ExtractionMetrics {
 pub fn test_extraction(
     source_id: &str,
     text: &str,
-    llm: &dyn mindcore::traits::LlmCallback,
+    llm: &dyn femind::traits::LlmCallback,
 ) -> Result<ExtractionTestResult> {
     let start = std::time::Instant::now();
-    let result = mindcore::ingest::llm_extract::extract_facts(text, llm)?;
+    let result = femind::ingest::llm_extract::extract_facts(text, llm)?;
     let elapsed = start.elapsed().as_millis() as u64;
 
     let mut entities: Vec<String> = Vec::new();

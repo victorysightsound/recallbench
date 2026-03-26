@@ -1,6 +1,6 @@
-//! MindCore native adapter — links directly to the mindcore crate.
+//! Femind native adapter — links directly to the femind crate.
 //!
-//! Enabled via the `mindcore-adapter` feature flag (on by default).
+//! Enabled via the `femind-adapter` feature flag (on by default).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -8,11 +8,11 @@ use std::sync::Mutex;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
-use mindcore::context::ContextBudget;
-use mindcore::embeddings::{ApiBackend, CandleNativeBackend, EmbeddingBackend, FallbackBackend};
-use mindcore::engine::MemoryEngine;
-use mindcore::memory::store::StoreResult;
-use mindcore::traits::{MemoryRecord, MemoryType};
+use femind::context::ContextBudget;
+use femind::embeddings::{ApiBackend, CandleNativeBackend, EmbeddingBackend, FallbackBackend};
+use femind::engine::MemoryEngine;
+use femind::memory::store::StoreResult;
+use femind::traits::{MemoryRecord, MemoryType};
 use serde::{Deserialize, Serialize};
 
 use crate::traits::MemorySystem;
@@ -45,20 +45,20 @@ impl MemoryRecord for ConversationMemory {
     }
 }
 
-pub struct MindCoreAdapter {
+pub struct FemindAdapter {
     engine: Mutex<MemoryEngine<ConversationMemory>>,
     /// Accumulated records awaiting batch embedding. Flushed on retrieve_context().
     pending: Mutex<Vec<ConversationMemory>>,
     /// Reusable embedding backend — shared Arc avoids reloading model on reset().
     backend: std::sync::Arc<dyn EmbeddingBackend>,
     /// Assembly configuration (diversification, recency, etc.)
-    assembly_config: mindcore::context::AssemblyConfig,
+    assembly_config: femind::context::AssemblyConfig,
     /// Optional LLM callback for extraction-based ingest.
     /// When set, ingest_session() uses store_with_extraction() instead of chunking.
-    llm: Option<Box<dyn mindcore::traits::LlmCallback>>,
+    llm: Option<Box<dyn femind::traits::LlmCallback>>,
 }
 
-impl MindCoreAdapter {
+impl FemindAdapter {
     /// Create with the default local CandleNativeBackend (all-MiniLM-L6-v2).
     pub fn new() -> Result<Self> {
         let backend: std::sync::Arc<dyn EmbeddingBackend> =
@@ -91,13 +91,13 @@ impl MindCoreAdapter {
             engine: Mutex::new(engine),
             pending: Mutex::new(Vec::new()),
             backend,
-            assembly_config: mindcore::context::AssemblyConfig::default(),
+            assembly_config: femind::context::AssemblyConfig::default(),
             llm: None,
         })
     }
 
     /// Set the assembly configuration (diversification, recency, etc.)
-    pub fn with_assembly_config(mut self, config: mindcore::context::AssemblyConfig) -> Self {
+    pub fn with_assembly_config(mut self, config: femind::context::AssemblyConfig) -> Self {
         self.assembly_config = config;
         self
     }
@@ -110,7 +110,7 @@ impl MindCoreAdapter {
     /// Enable LLM extraction during ingest.
     /// When set, ingest_session() extracts individual facts via LLM
     /// instead of chunking raw text.
-    pub fn with_llm(mut self, llm: Box<dyn mindcore::traits::LlmCallback>) -> Self {
+    pub fn with_llm(mut self, llm: Box<dyn femind::traits::LlmCallback>) -> Self {
         self.llm = Some(llm);
         self
     }
@@ -133,7 +133,7 @@ impl MindCoreAdapter {
         let model_name = self.backend.model_name();
         let mut stored = 0usize;
 
-        let store = mindcore::memory::MemoryStore::<ConversationMemory>::new();
+        let store = femind::memory::MemoryStore::<ConversationMemory>::new();
 
         for (text, embedding, session_date, chunk_index) in chunks {
             let record = ConversationMemory {
@@ -152,7 +152,7 @@ impl MindCoreAdapter {
                         use sha2::Digest;
                         format!("{:x}", sha2::Sha256::digest(text.as_bytes()))
                     };
-                    mindcore::search::VectorSearch::store_vector(
+                    femind::search::VectorSearch::store_vector(
                         db, id, embedding, model_name, &hash,
                     )?;
                     // Update embedding status
@@ -178,8 +178,8 @@ impl MindCoreAdapter {
     /// Scans all memories for structured fact patterns, detects conflicting facts,
     /// and creates SupersededBy edges between outdated and current facts.
     fn build_graph_from_facts(&self) -> Result<()> {
-        use mindcore::ingest::fact_extraction;
-        use mindcore::memory::{GraphMemory, RelationType};
+        use femind::ingest::fact_extraction;
+        use femind::memory::{GraphMemory, RelationType};
 
         let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
         let db = engine.database();
@@ -259,8 +259,8 @@ impl MindCoreAdapter {
 }
 
 #[async_trait]
-impl MemorySystem for MindCoreAdapter {
-    fn name(&self) -> &str { "mindcore" }
+impl MemorySystem for FemindAdapter {
+    fn name(&self) -> &str { "femind" }
     fn version(&self) -> &str { env!("CARGO_PKG_VERSION") }
 
     fn supports_precomputed(&self) -> bool { true }
@@ -305,7 +305,7 @@ impl MemorySystem for MindCoreAdapter {
 
         // Fallback: chunk-based ingest (no LLM)
         let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
-        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 1000, 10);
+        let chunks = femind::ingest::chunking::chunk_session(turns_iter, &session_date, 1000, 10);
 
         let records: Vec<ConversationMemory> = chunks.iter().enumerate()
             .map(|(idx, chunk)| ConversationMemory {
@@ -362,7 +362,7 @@ mod tests {
 
     #[tokio::test]
     async fn ingest_and_retrieve() {
-        let adapter = MindCoreAdapter::new().unwrap();
+        let adapter = FemindAdapter::new().unwrap();
         let session = ConversationSession {
             id: "s1".to_string(), date: Some("2024-01-15".to_string()),
             turns: vec![
@@ -379,7 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn reset_clears() {
-        let adapter = MindCoreAdapter::new().unwrap();
+        let adapter = FemindAdapter::new().unwrap();
         let session = ConversationSession {
             id: "s1".to_string(), date: None,
             turns: vec![Turn { role: "user".to_string(), content: "Hello world, this is a test message with enough content".to_string() }],

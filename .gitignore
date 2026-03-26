@@ -2,3 +2,5 @@
 .DS_Store
 results/
 recallbench/src/web/ui/node_modules/
+.dial/*.db-wal
+.dial/*.db-shm

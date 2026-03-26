@@ -952,6 +952,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
+name = "femind"
+version = "0.2.0"
+dependencies = [
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "chrono",
+ "hf-hub",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1984,26 +2004,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mindcore"
-version = "0.2.0"
-dependencies = [
- "candle-core",
- "candle-nn",
- "candle-transformers",
- "chrono",
- "hf-hub",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
- "tokenizers",
- "tokio",
- "tracing",
- "ureq",
-]
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2567,12 +2567,12 @@ dependencies = [
  "comfy-table",
  "csv",
  "dirs",
+ "femind",
  "futures-util",
  "governor",
  "hdrhistogram",
  "indicatif",
  "memloft-core",
- "mindcore",
  "open",
  "reqwest",
  "rusqlite",
@@ -2587,6 +2587,59 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "which",
+]
+
+[[package]]
+name = "recallbench-femind"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "femind",
+ "recallbench",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "recallbench-mem0"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "recallbench",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "recallbench-omega"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "recallbench",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "recallbench-zep"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "recallbench",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

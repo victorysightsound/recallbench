@@ -154,11 +154,11 @@ mod tests {
             total_correct: 444,
         };
         let output = render_accuracy_table(
-            &[("MindCore", &metrics)],
+            &[("Femind", &metrics)],
             "longmemeval",
             "oracle",
         );
-        assert!(output.contains("MindCore"));
+        assert!(output.contains("Femind"));
         assert!(output.contains("92.5%"));
         assert!(output.contains("longmemeval"));
     }

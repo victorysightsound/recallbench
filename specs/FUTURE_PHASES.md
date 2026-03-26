@@ -28,7 +28,7 @@ npm run build
 npx wrangler pages deploy dist --project-name recallbench
 
 # Set up custom domain (optional)
-# recallbench.dev or bench.mindcore.dev
+# recallbench.dev or bench.femind.dev
 ```
 
 ### D1 Schema
@@ -168,7 +168,7 @@ jobs:
 ## Why Not WASM (Option 1 / Approach B)
 
 Investigated and rejected:
-- MindCore uses rusqlite (SQLite FFI) which doesn't compile to WASM cleanly
+- Femind uses rusqlite (SQLite FFI) which doesn't compile to WASM cleanly
 - CLI subprocess spawning (`claude --print`) doesn't work in WASM/browser
 - Cloudflare Workers have 30-second CPU limits — a 500-question benchmark takes 30-60 minutes
 - The engineering effort to make it work exceeds the benefit vs. the binary wrapper approach

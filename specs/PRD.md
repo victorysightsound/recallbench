@@ -47,7 +47,7 @@ RecallBench is vendor-neutral, open-source, and designed to become the community
 - RecallBench does not train or fine-tune models
 - RecallBench is not an LLM benchmark (it benchmarks memory/retrieval, not generation quality)
 - RecallBench does not host a web leaderboard (may add later)
-- RecallBench does not replace mindcore-bench (which stays as MindCore's internal regression test)
+- RecallBench is the benchmark application for Femind and other memory systems
 
 ---
 
@@ -82,7 +82,7 @@ RecallBench is vendor-neutral, open-source, and designed to become the community
 | Backboard | — | 93.4% | Self-reported |
 | EverMemOS | — | 92.3% | arxiv 2601.02163 |
 | Hindsight (Vectorize) | 91.4% | — | arxiv 2512.12818 |
-| MindCore | 88.7% | — | mindcore-bench (2026-03-20) |
+| Femind | 88.7% | — | historical femind run (2026-03-20) |
 | Emergence AI | 86% | — | Self-reported |
 
 ---
@@ -155,7 +155,7 @@ recallbench/
 │       │   └── embed.rs        # rust-embed for bundling static assets into binary
 │       └── errors.rs           # Error types
 ├── adapters/
-│   ├── recallbench-mindcore/   # MindCore native adapter
+│   ├── recallbench-femind/   # Femind native adapter
 │   │   ├── Cargo.toml
 │   │   └── src/lib.rs
 │   ├── recallbench-mem0/       # Mem0 HTTP adapter
@@ -356,22 +356,22 @@ recallbench download locomo
 
 # Run benchmark — single system
 recallbench run \
-  --system mindcore \
+  --system femind \
   --dataset longmemeval \
   --variant oracle \
   --concurrency 10 \
   --budget 16384 \
   --judge-model claude-sonnet \
   --gen-model claude-sonnet \
-  --output results/mindcore-oracle.jsonl \
+  --output results/femind-oracle.jsonl \
   --seed 42
 
 # Run benchmark — filter by question type
 recallbench run \
-  --system mindcore \
+  --system femind \
   --dataset longmemeval \
   --filter temporal-reasoning,knowledge-update \
-  --output results/mindcore-temporal.jsonl
+  --output results/femind-temporal.jsonl
 
 # Run benchmark — generic HTTP system
 recallbench run \
@@ -381,19 +381,19 @@ recallbench run \
 
 # Compare multiple systems
 recallbench compare \
-  --systems mindcore,omega,mem0 \
+  --systems femind,omega,mem0 \
   --dataset longmemeval \
   --variant oracle \
   --output results/comparison.json
 
 # Generate report from results
-recallbench report results/mindcore-oracle.jsonl
-recallbench report results/mindcore-oracle.jsonl --format markdown
-recallbench report results/mindcore-oracle.jsonl --format csv
+recallbench report results/femind-oracle.jsonl
+recallbench report results/femind-oracle.jsonl --format markdown
+recallbench report results/femind-oracle.jsonl --format csv
 recallbench report results/comparison.json --format table
 
 # Failure analysis
-recallbench failures results/mindcore-oracle.jsonl --export failures.json
+recallbench failures results/femind-oracle.jsonl --export failures.json
 
 # Show dataset statistics
 recallbench stats longmemeval --variant oracle
@@ -405,15 +405,15 @@ recallbench validate my-dataset.json
 recallbench calibrate --judge-model claude-sonnet --dataset longmemeval
 
 # Resume an interrupted run
-recallbench run --resume results/mindcore-oracle.jsonl [...]
+recallbench run --resume results/femind-oracle.jsonl [...]
 
 # Longitudinal degradation test — simulate months of memory accumulation
 recallbench longevity \
-  --system mindcore \
+  --system femind \
   --sessions 1000 \
   --checkpoints 10 \
   --eval-questions 50 \
-  --output results/mindcore-longevity.json
+  --output results/femind-longevity.json
 
 # Launch local web UI to browse results
 recallbench serve --port 8888 --results-dir results/
@@ -486,16 +486,16 @@ The `--quick` flag (alias `--dev`) evaluates a stratified random subset instead 
 
 ```bash
 # Quick run with defaults (50 questions, stratified)
-recallbench run --system mindcore --dataset longmemeval --quick
+recallbench run --system femind --dataset longmemeval --quick
 
 # Custom quick size
-recallbench run --system mindcore --dataset longmemeval --quick --quick-size 100
+recallbench run --system femind --dataset longmemeval --quick --quick-size 100
 
 # Reproducible quick subset
-recallbench run --system mindcore --dataset longmemeval --quick --seed 42
+recallbench run --system femind --dataset longmemeval --quick --seed 42
 
 # Quick compare
-recallbench compare --systems mindcore,omega --dataset longmemeval --quick
+recallbench compare --systems femind,omega --dataset longmemeval --quick
 ```
 
 ### Configurable OpenAI-Compatible Endpoints
@@ -510,15 +510,15 @@ Any service using the OpenAI Chat Completions API format can be used as a genera
 
 ```bash
 # Use local Ollama for free iteration
-recallbench run --system mindcore --dataset longmemeval --quick \
+recallbench run --system femind --dataset longmemeval --quick \
   --gen-model local --judge-model local
 
 # Use DeepInfra for cheap cloud iteration
-recallbench run --system mindcore --dataset longmemeval \
+recallbench run --system femind --dataset longmemeval \
   --gen-model custom --judge-model custom
 
 # Mix providers: cheap generation, quality judging
-recallbench run --system mindcore --dataset longmemeval --quick \
+recallbench run --system femind --dataset longmemeval --quick \
   --gen-model local --judge-model claude-sonnet
 ```
 
@@ -534,24 +534,24 @@ RecallBench v1.0.0 — LongMemEval Oracle — 2026-03-20
 Accuracy
 ────────────────────────────────────────────────────────────────────
 System           Task-Avg  Overall  IE     MR     KU     TR     ABS
-MindCore 0.1     88.7%     88.7%    90.2%  81.0%  91.0%  94.0%  85.0%
+Femind 0.1     88.7%     88.7%    90.2%  81.0%  91.0%  94.0%  85.0%
 OMEGA Memory     95.4%     95.2%    96.1%  93.5%  95.8%  94.1%  97.0%
 
 Latency (ms) — p50 / p95 / p99
 ────────────────────────────────────────────────────────────────────
 System           Ingest      Search      Context     Total
-MindCore 0.1     2.3/6/8     8.1/18/22   4.2/8/10    14.6/32/40
+Femind 0.1     2.3/6/8     8.1/18/22   4.2/8/10    14.6/32/40
 OMEGA Memory     1.8/4/5     6.9/15/18   3.5/6/8     12.2/25/31
 
 Cost
 ────────────────────────────────────────────────────────────────────
 System           Tokens In   Tokens Out  Est. Cost
-MindCore 0.1     1,234,567   45,678      $2.34
+Femind 0.1     1,234,567   45,678      $2.34
 ```
 
 ### JSONL (per-question results)
 ```json
-{"question_id":"q001","system":"mindcore","question_type":"temporal-reasoning","hypothesis":"March 5th","ground_truth":"March 5th","correct":true,"ingest_ms":12,"retrieval_ms":8,"generation_ms":2100,"judge_ms":890,"tokens_used":1024,"tokens_generated":42}
+{"question_id":"q001","system":"femind","question_type":"temporal-reasoning","hypothesis":"March 5th","ground_truth":"March 5th","correct":true,"ingest_ms":12,"retrieval_ms":8,"generation_ms":2100,"judge_ms":890,"tokens_used":1024,"tokens_generated":42}
 ```
 
 ### JSON Summary (per-run aggregate)
@@ -627,7 +627,7 @@ Checkpoints are stored in a `.checkpoints/` directory alongside results. On `--r
 ### Output
 
 ```
-RecallBench Longevity — MindCore v0.1
+RecallBench Longevity — Femind v0.1
 ════════════════════════════════════════════════════
 
 Sessions    Memories    Accuracy    Latency (p50)
@@ -806,12 +806,12 @@ RecallBench supports multiple LLM providers for both generation and judging. Eac
 | 40 | Generic HTTP adapter | Implement `systems/http.rs`: configurable REST endpoints via TOML. Map ingest/retrieve/reset to HTTP calls. Parse JSON responses. Handle timeouts and retries. | Unit test with mock HTTP server |
 | 41 | Generic subprocess adapter | Implement `systems/subprocess.rs`: configurable CLI commands via TOML. Pipe session data as JSON stdin, parse JSON stdout. Handle process errors and timeouts. | Unit test with echo subprocess |
 | 42 | System registry | Implement `systems/mod.rs`: registry mapping system names to adapter constructors. Support built-in adapters (echo, http, subprocess) + external crate adapters. | Unit test for registration and lookup |
-| 43 | MindCore adapter | Implement `adapters/recallbench-mindcore/`: native Rust adapter linking against mindcore crate. Map ConversationSession to MindCore's MemoryRecord. Use MindCore's hybrid search for retrieval. | Integration test: ingest and retrieve with real MindCore engine |
+| 43 | Femind adapter | Implement `adapters/recallbench-femind/`: native Rust adapter linking against femind crate. Map ConversationSession to Femind's MemoryRecord. Use Femind's hybrid search for retrieval. | Integration test: ingest and retrieve with real Femind engine |
 | 44 | Mem0 adapter | Implement `adapters/recallbench-mem0/`: HTTP adapter calling Mem0's REST API (add memory, search). Handle Mem0's response format. | Unit test with mock Mem0 server |
 | 45 | OMEGA adapter | Implement `adapters/recallbench-omega/`: HTTP adapter for OMEGA's MCP-compatible API. Handle OMEGA's graph memory format. | Unit test with mock OMEGA server |
 | 46 | Zep adapter | Implement `adapters/recallbench-zep/`: HTTP adapter calling Zep's REST API (`/memory`, `/search`). Handle Zep's session-based memory model and response format. | Unit test with mock Zep server |
 
-**Exit criteria:** MindCore adapter produces scores matching mindcore-bench. HTTP and subprocess adapters work with TOML configuration. All 4 named adapters (MindCore, Mem0, OMEGA, Zep) implemented.
+**Exit criteria:** Femind adapter reproduces the historical femind benchmark range. HTTP and subprocess adapters work with TOML configuration. All 4 named adapters (Femind, Mem0, OMEGA, Zep) implemented.
 
 ### Phase 8: CLI
 
@@ -876,7 +876,7 @@ RecallBench supports multiple LLM providers for both generation and judging. Eac
 |---|------|-------------|------|
 | 76 | Unit test suite | Ensure all modules have unit tests. Target >80% line coverage on core logic (types, metrics, resume, checkpoints, prompts, config). | `cargo test` — all pass |
 | 77 | Integration test: echo end-to-end | Full pipeline test: download fixture dataset → run with echo adapter → verify metrics → verify JSONL output → verify resume → verify stage checkpoint → verify report formats. | Single integration test covering the full loop |
-| 78 | Integration test: MindCore end-to-end | Full pipeline test with MindCore adapter: download LongMemEval oracle → run 10 questions → verify scores are in expected range. | Integration test (requires mindcore crate) |
+| 78 | Integration test: Femind end-to-end | Full pipeline test with Femind adapter: download LongMemEval oracle → run 10 questions → verify scores are in expected range. | Integration test (requires femind crate) |
 | 79 | Error handling hardening | Audit all `unwrap()` and `expect()` calls. Replace with proper error propagation. Ensure per-question failures don't abort the full run. Add timeout handling for LLM calls and HTTP adapters. | Chaos test: inject failures into echo adapter, verify graceful degradation |
 | 80 | Edge cases | Handle: empty datasets, single-question datasets, datasets with no abstention questions, systems that return empty context, LLM returning non-yes/no, JSONL corruption on resume, checkpoint corruption, concurrent file writes. | Unit tests for each edge case |
 | 81 | Tracing & logging | Add structured tracing throughout: question processing, LLM calls, retries, errors, timing. Respect `--verbose` / `RUST_LOG` for filtering. | Verify log output at different verbosity levels |
@@ -938,9 +938,9 @@ Build order enforces dependencies:
 
 | Criteria | Measure |
 |----------|---------|
-| Reproduce LongMemEval published scores within ±2% | MindCore adapter matches mindcore-bench results |
+| Reproduce LongMemEval published scores within ±2% | Femind adapter matches the historical femind benchmark range |
 | 500-question eval in <5 minutes (concurrent, 10 workers) | Wall-clock time with LLM API latency |
-| 4+ memory systems benchmarked comparatively | MindCore + Mem0 + OMEGA + Zep |
+| 4+ memory systems benchmarked comparatively | Femind + Mem0 + OMEGA + Zep |
 | 7 datasets supported | LongMemEval, LoCoMo, ConvoMem, MemBench, MemoryAgentBench, HaluMem, custom |
 | Judge calibration >90% accuracy | On 50 pre-scored pairs |
 | Stage-level resume works | Interrupt mid-pipeline, resume from last completed stage |
@@ -972,7 +972,7 @@ Build order enforces dependencies:
 |---------|-------------|-------------|-------------|----------------|
 | Language | Rust | TypeScript | Python | Python |
 | Pluggable systems | Trait + HTTP + subprocess | Provider adapters | Partial (LLMs only) | No |
-| Named adapters | 4 (MindCore, Mem0, OMEGA, Zep) | 3 (Supermemory, Mem0, Zep) | 0 | 0 |
+| Named adapters | 4 (Femind, Mem0, OMEGA, Zep) | 3 (Supermemory, Mem0, Zep) | 0 | 0 |
 | Datasets | 7 | 3 | Custom only | 1 each |
 | Concurrent eval | Yes (configurable pool) | Unknown | No | No |
 | Latency profiling (p50/p95/p99) | Yes | No | No | No |

@@ -53,10 +53,11 @@ impl MemorySystem for Adapter {
             .json(&serde_json::json!({"query": query}))
             .send().await.context("search failed")?;
         let body = resp.text().await?;
+        let tokens_used = body.len() / 4;
         Ok(RetrievalResult {
             context: body,
             items_retrieved: 1,
-            tokens_used: body.len() / 4,
+            tokens_used,
             duration_ms: start.elapsed().as_millis() as u64,
         })
     }

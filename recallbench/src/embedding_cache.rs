@@ -87,7 +87,7 @@ impl EmbeddingCache {
         dataset: &str,
         variant: &str,
         questions: &[crate::types::BenchmarkQuestion],
-        backend: &dyn mindcore::embeddings::EmbeddingBackend,
+        backend: &dyn femind::embeddings::EmbeddingBackend,
         chunk_size: usize,
         min_turn_chars: usize,
     ) -> Result<Self> {
@@ -117,7 +117,7 @@ impl EmbeddingCache {
         for (session_id, session) in &unique_sessions {
             let session_date = session.date.clone().unwrap_or_default();
             let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
-            let chunks = mindcore::ingest::chunking::chunk_session(
+            let chunks = femind::ingest::chunking::chunk_session(
                 turns_iter, &session_date, chunk_size, min_turn_chars,
             );
             for (idx, chunk) in chunks.iter().enumerate() {
@@ -181,7 +181,7 @@ impl EmbeddingCache {
             // Store in a transaction
             let tx = conn.unchecked_transaction()?;
             for ((session_id, date, idx, text), embedding) in batch.iter().zip(embeddings.iter()) {
-                let blob = mindcore::embeddings::pooling::vec_to_bytes(embedding);
+                let blob = femind::embeddings::pooling::vec_to_bytes(embedding);
                 tx.execute(
                     "INSERT OR REPLACE INTO session_chunks (session_id, chunk_index, chunk_text, embedding, session_date)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -229,7 +229,7 @@ impl EmbeddingCache {
                     session_id: row.get(0)?,
                     chunk_index: row.get(1)?,
                     text: row.get(2)?,
-                    embedding: mindcore::embeddings::pooling::bytes_to_vec(&blob),
+                    embedding: femind::embeddings::pooling::bytes_to_vec(&blob),
                     session_date: row.get(4)?,
                 })
             })?;

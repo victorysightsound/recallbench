@@ -45,7 +45,7 @@ Production-ready release. All alpha gaps resolved.
 - `lib.rs` library target — external crates can now depend on recallbench to implement MemorySystem
 - Custom/local OpenAI-compatible endpoint resolution via `--gen-model custom` and `--gen-model local`
 - Stage-level checkpointing (`.checkpoints/` directory) for resuming from any pipeline stage
-- Named adapter crates: recallbench-mindcore, recallbench-mem0, recallbench-omega, recallbench-zep
+- Named adapter crates: recallbench-femind, recallbench-mem0, recallbench-omega, recallbench-zep
 - `create_llm_client()` helper resolving provider from model string and config
 
 ### Fixed

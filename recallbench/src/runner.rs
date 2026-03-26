@@ -218,7 +218,7 @@ async fn evaluate_question(
                 })?;
                 for row in rows {
                     let (text, blob, date, idx) = row?;
-                    let embedding = mindcore::embeddings::pooling::bytes_to_vec(&blob);
+                    let embedding = femind::embeddings::pooling::bytes_to_vec(&blob);
                     tuples.push((text, embedding, date, idx));
                 }
             }
@@ -327,7 +327,7 @@ async fn evaluate_question(
 }
 
 /// Build the generation prompt from context, question, date, and type.
-/// Ported from mindcore-bench v3 for result parity.
+/// Ported from the historical femind benchmark generation flow for parity.
 pub fn build_generation_prompt(
     context: &str,
     question: &str,

@@ -4,7 +4,7 @@
 
 Build a local test harness in recallbench that measures retrieval quality
 directly — no LLM generation, no judging, no API costs. Enables rapid
-iteration on mindcore's search pipeline parameters (RRF weights, chunk size,
+iteration on femind's search pipeline parameters (RRF weights, chunk size,
 reranker settings, diversification) with instant feedback.
 
 ## Design
@@ -17,7 +17,7 @@ For each question in the dataset, we know:
 - The ground truth answer text
 
 The harness:
-1. Loads all haystack sessions into mindcore
+1. Loads all haystack sessions into femind
 2. Runs the search pipeline with the question text
 3. Checks if chunks from the answer sessions appear in the top-N results
 4. Reports retrieval metrics without calling any LLM
@@ -35,7 +35,7 @@ New subcommand: `recallbench retrieval-test`
 
 ```
 recallbench retrieval-test \
-  --system mindcore-api \
+  --system femind-api \
   --variant small \
   --filter multi-session \
   --quick --quick-size 20 \

@@ -1,6 +1,6 @@
 # LongMemEval Benchmark Progress
 
-Tracking MindCore's performance on the LongMemEval Oracle dataset (500 questions).
+Tracking Femind's performance on the LongMemEval Oracle dataset (500 questions).
 
 ## Competitive Landscape
 
@@ -14,7 +14,7 @@ Industry convention is to report **task-averaged** accuracy (mean of per-categor
 
 | System | Task-Averaged | Raw Overall | Gen Model | Judge | Dataset | Measured | Source |
 |--------|---------------|-------------|-----------|-------|---------|----------|--------|
-| **MindCore v3** | **95.5%** | **95.6% (478/500)** | **Sonnet** | **Sonnet** | **Oracle** | **2026-03-20** | This repo |
+| **Femind v3** | **95.5%** | **95.6% (478/500)** | **Sonnet** | **Sonnet** | **Oracle** | **2026-03-20** | This repo |
 | OMEGA | 95.4% | 93.2% (466/500) | GPT-4.1 | GPT-4o | S | ~2026-02 | dev.to/singularityjason |
 | Mastra OM | 94.87% | 93.6% (468/500) | gpt-5-mini | GPT-4o | S | 2026-02-09 | mastra.ai/research/observational-memory |
 | Mastra OM | 93.27% | ~92.8% | Gemini 3 Pro | GPT-4o | S | 2026-02-09 | mastra.ai/research/observational-memory |
@@ -29,19 +29,19 @@ Industry convention is to report **task-averaged** accuracy (mean of per-categor
 
 ### Key Caveats for Fair Comparison
 
-1. **Dataset variant matters.** MindCore ran on **Oracle** (only evidence sessions, no distractors). All competitors ran on **LongMemEval_S** (~40 sessions including distractors, ~115K tokens). Oracle is easier — all provided context is relevant, no retrieval noise. A direct comparison requires running MindCore on LongMemEval_S.
+1. **Dataset variant matters.** Femind ran on **Oracle** (only evidence sessions, no distractors). All competitors ran on **LongMemEval_S** (~40 sessions including distractors, ~115K tokens). Oracle is easier — all provided context is relevant, no retrieval noise. A direct comparison requires running Femind on LongMemEval_S.
 
-2. **Generation model matters enormously.** Mastra's scores jump from 84.23% (gpt-4o) to 94.87% (gpt-5-mini) — an 11-point swing from the generation model alone, same memory system. MindCore uses Sonnet. Scores are not purely a measure of the memory system.
+2. **Generation model matters enormously.** Mastra's scores jump from 84.23% (gpt-4o) to 94.87% (gpt-5-mini) — an 11-point swing from the generation model alone, same memory system. Femind uses Sonnet. Scores are not purely a measure of the memory system.
 
-3. **Judge model matters.** MindCore uses Sonnet as judge; most competitors use GPT-4o (the LongMemEval standard). Different judges may score the same response differently.
+3. **Judge model matters.** Femind uses Sonnet as judge; most competitors use GPT-4o (the LongMemEval standard). Different judges may score the same response differently.
 
-4. **Iteration count.** OMEGA reports their 95.4% as "best run" after ~8 iterations targeting failure modes. MindCore ran 3 iterations (v1/v2/v3). Mastra does not report iteration count.
+4. **Iteration count.** OMEGA reports their 95.4% as "best run" after ~8 iterations targeting failure modes. Femind ran 3 iterations (v1/v2/v3). Mastra does not report iteration count.
 
 5. **OMEGA has two scores.** Their marketing blog (dev.to) reports 95.4% task-averaged. Their own GitHub repo `docs/benchmark-report.md` still shows 76.8% from an older system version. The 76.8% has not been retracted — the repo docs simply haven't been updated to reflect the newer score.
 
-### Per-Category Comparison (MindCore v3 vs OMEGA 95.4% claim, as of 2026-03-20)
+### Per-Category Comparison (Femind v3 vs OMEGA 95.4% claim, as of 2026-03-20)
 
-| Category | OMEGA (95.4% run) | MindCore v3 |
+| Category | OMEGA (95.4% run) | Femind v3 |
 |----------|-------------------|-------------|
 | Single-Session (combined) | 99.2% (125/126) | 98.4% (124/126) |
 | Multi-Session | 83.5% (111/133) | 91.0% (121/133) |
@@ -49,16 +49,16 @@ Industry convention is to report **task-averaged** accuracy (mean of per-categor
 | Knowledge Update | 96.2% (75/78) | 97.4% (76/78) |
 | Preference | 100% (30/30) | 90.0% (27/30) |
 
-OMEGA's strength is preference (100%) — MindCore's weakness. MindCore leads on multi-session (+7.5%), temporal (+3.7%), and knowledge-update (+1.2%).
+OMEGA's strength is preference (100%) — Femind's weakness. Femind leads on multi-session (+7.5%), temporal (+3.7%), and knowledge-update (+1.2%).
 
 ### Next Step: LongMemEval_S Evaluation
 
-To make a direct apples-to-apples comparison with competitors, MindCore needs to be evaluated on **LongMemEval_S** (the variant all competitors use). This involves:
+To make a direct apples-to-apples comparison with competitors, Femind needs to be evaluated on **LongMemEval_S** (the variant all competitors use). This involves:
 - ~40 sessions per question (vs Oracle's minimal evidence sessions)
 - ~115K tokens of context (requires actual retrieval, not full-context inclusion)
 - Distractor sessions that are irrelevant to the question
 
-This will be done via the recallbench project (`~/projects/recallbench`), which ports the prompt engineering and evaluation methodology from mindcore-bench.
+This will be done via the recallbench project (`~/projects/recallbench`), which ports the prompt engineering and evaluation methodology from the original in-repo femind harness.
 
 ### Sources (Accessed 2026-03-20)
 
@@ -306,9 +306,9 @@ Currently at 478/500. Need to recover 7 more. Remaining levers:
 
 ---
 
-## Future: Core MindCore Improvements
+## Future: Core Femind Improvements
 
-The benchmark revealed three areas where MindCore's core engine needs improvement for real-world usage (documented, not yet implemented):
+The benchmark revealed three areas where Femind's core engine needs improvement for real-world usage (documented, not yet implemented):
 
 1. **Preference memory tagging** — Detect and tag user preferences during ingestion as a distinct memory type with higher retrieval priority. (`src/ingest/`)
 
@@ -316,7 +316,7 @@ The benchmark revealed three areas where MindCore's core engine needs improvemen
 
 3. **Vector embeddings for semantic search** — Wire Candle embeddings feature into hybrid search (FTS5 + vector similarity + RRF fusion) for retrieval when keyword matching fails. (`src/search/`)
 
-Future benchmark work will be done via the recallbench project (`~/projects/recallbench`), which ports the prompt engineering and evaluation methodology from mindcore-bench.
+Future benchmark work will be done via the recallbench project (`~/projects/recallbench`), which ports the prompt engineering and evaluation methodology from the original in-repo femind harness.
 
 ---
 

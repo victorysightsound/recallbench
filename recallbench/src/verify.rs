@@ -2,7 +2,7 @@
 //!
 //! Makes a second LLM call to re-check counting, arithmetic, and version
 //! selection for question types where these errors are common.
-//! Ported from mindcore-bench v3 for result parity.
+//! Ported from the historical femind benchmark verification flow for parity.
 
 use anyhow::Result;
 

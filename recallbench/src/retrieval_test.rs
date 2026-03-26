@@ -279,8 +279,6 @@ pub async fn test_retrieval(
         });
     }
 
-    let answer_set: HashSet<&str> = answer_session_ids.iter().map(|s| s.as_str()).collect();
-
     // Reset and ingest
     system.reset().await?;
 
@@ -306,7 +304,7 @@ pub async fn test_retrieval(
                 })?;
                 for row in rows {
                     let (text, blob, date, idx) = row?;
-                    let embedding = mindcore::embeddings::pooling::bytes_to_vec(&blob);
+                    let embedding = femind::embeddings::pooling::bytes_to_vec(&blob);
                     tuples.push((text, embedding, date, idx));
                 }
             }

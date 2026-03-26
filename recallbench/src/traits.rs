@@ -10,7 +10,7 @@ use crate::types::{BenchmarkQuestion, ConversationSession, IngestStats, Retrieva
 /// LLM generation and judging steps.
 #[async_trait]
 pub trait MemorySystem: Send + Sync {
-    /// Human-readable name for reports (e.g., "MindCore", "Mem0").
+    /// Human-readable name for reports (e.g., "Femind", "Mem0").
     fn name(&self) -> &str;
 
     /// Version string for reproducibility (e.g., "0.1.0").

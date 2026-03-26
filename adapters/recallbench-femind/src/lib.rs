@@ -1,7 +1,7 @@
-//! MindCore native adapter for RecallBench.
+//! Femind native adapter for RecallBench.
 //!
-//! Links directly to the mindcore crate for zero-overhead benchmarking.
-//! Uses the same ingestion pattern as mindcore-bench for result parity.
+//! Links directly to the femind crate for zero-overhead benchmarking.
+//! Preserves parity with the historical in-repo femind benchmark runs.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -9,16 +9,16 @@ use std::sync::Mutex;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
-use mindcore::context::ContextBudget;
-use mindcore::engine::MemoryEngine;
-use mindcore::memory::store::StoreResult;
-use mindcore::traits::{MemoryRecord, MemoryType};
+use femind::context::ContextBudget;
+use femind::engine::MemoryEngine;
+use femind::memory::store::StoreResult;
+use femind::traits::{MemoryRecord, MemoryType};
 use recallbench::traits::MemorySystem;
 use recallbench::types::{ConversationSession, IngestStats, RetrievalResult};
 use serde::{Deserialize, Serialize};
 
-/// Conversation turn stored as a MindCore memory.
-/// Matches the ConversationMemory type used by mindcore-bench for result parity.
+/// Conversation turn stored as a Femind memory.
+/// Matches the historical benchmark record shape used for parity runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMemory {
     pub id: Option<i64>,
@@ -64,15 +64,15 @@ impl MemoryRecord for ConversationMemory {
     }
 }
 
-/// MindCore adapter for RecallBench.
+/// Femind adapter for RecallBench.
 ///
-/// Creates a fresh in-memory MindCore engine per reset cycle.
-/// Uses MindCore's FTS5 search and context assembly for retrieval.
-pub struct MindCoreAdapter {
+/// Creates a fresh in-memory Femind engine per reset cycle.
+/// Uses Femind's FTS5 search and context assembly for retrieval.
+pub struct FemindAdapter {
     engine: Mutex<MemoryEngine<ConversationMemory>>,
 }
 
-impl MindCoreAdapter {
+impl FemindAdapter {
     pub fn new() -> Result<Self> {
         let engine = MemoryEngine::<ConversationMemory>::builder()
             .build()?;
@@ -91,9 +91,9 @@ impl MindCoreAdapter {
 }
 
 #[async_trait]
-impl MemorySystem for MindCoreAdapter {
+impl MemorySystem for FemindAdapter {
     fn name(&self) -> &str {
-        "mindcore"
+        "femind"
     }
 
     fn version(&self) -> &str {
@@ -176,7 +176,7 @@ mod tests {
 
     #[tokio::test]
     async fn ingest_and_retrieve() {
-        let adapter = MindCoreAdapter::new().unwrap();
+        let adapter = FemindAdapter::new().unwrap();
 
         let session = ConversationSession {
             id: "s1".to_string(),
@@ -197,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn reset_clears_state() {
-        let adapter = MindCoreAdapter::new().unwrap();
+        let adapter = FemindAdapter::new().unwrap();
 
         let session = ConversationSession {
             id: "s1".to_string(),

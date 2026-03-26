@@ -1,13 +1,13 @@
 [package]
-name = "recallbench-mindcore"
+name = "recallbench-femind"
 version = "0.1.0"
 edition = "2024"
-description = "MindCore adapter for RecallBench"
+description = "Femind adapter for RecallBench"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 recallbench = { path = "../../recallbench" }
-mindcore = { path = "../../../mindcore" }
+femind = { path = "../../../fe-suite/fe-mind" }
 anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }

@@ -43,7 +43,7 @@ External crates need to depend on recallbench to implement `MemorySystem`.
 
 ### Task 5: Create adapter workspace crates
 Create the `adapters/` directory with workspace member crates:
-- `adapters/recallbench-mindcore/` — links to `mindcore` crate via path dep, maps ConversationSession to MemoryRecord
+- `adapters/recallbench-femind/` — links to `femind` crate via path dep, maps ConversationSession to MemoryRecord
 - `adapters/recallbench-mem0/` — HTTP adapter for Mem0 REST API
 - `adapters/recallbench-omega/` — HTTP adapter for OMEGA MCP API
 - `adapters/recallbench-zep/` — HTTP adapter for Zep REST API

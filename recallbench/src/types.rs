@@ -173,7 +173,7 @@ mod tests {
     fn eval_result_roundtrip() {
         let result = EvalResult {
             question_id: "q001".to_string(),
-            system_name: "mindcore".to_string(),
+            system_name: "femind".to_string(),
             question_type: "temporal-reasoning".to_string(),
             is_abstention: false,
             hypothesis: "March 5th".to_string(),
@@ -198,7 +198,7 @@ mod tests {
     fn eval_result_jsonl_format() {
         let result = EvalResult {
             question_id: "q001".to_string(),
-            system_name: "mindcore".to_string(),
+            system_name: "femind".to_string(),
             question_type: "temporal-reasoning".to_string(),
             is_abstention: false,
             hypothesis: "March 5th".to_string(),
@@ -215,6 +215,6 @@ mod tests {
         let line = serde_json::to_string(&result).unwrap();
         assert!(!line.contains('\n'));
         let parsed: EvalResult = serde_json::from_str(&line).unwrap();
-        assert_eq!(parsed.system_name, "mindcore");
+        assert_eq!(parsed.system_name, "femind");
     }
 }

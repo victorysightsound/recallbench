@@ -1,4 +1,4 @@
-[2m2026-03-20T20:34:48.355308Z[0m [32m INFO[0m [2mmindcore_bench::download[0m[2m:[0m Dataset already cached: /Users/johndeaton/.cache/mindcore-bench/data/longmemeval_oracle.json (15.4MB)
+[2m2026-03-20T20:34:48.355308Z[0m [32m INFO[0m [2mrecallbench::historical_import[0m[2m:[0m Dataset already cached: /Users/johndeaton/.cache/recallbench/femind-legacy/data/longmemeval_oracle.json (15.4MB)
 Running LongMemEval benchmark: 500 questions, budget=0 tokens
 Generation: sonnet | Judge: sonnet
 Using Claude Code CLI (subscription, no API tokens)

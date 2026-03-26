@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rusqlite::{params, Connection};
 
 use crate::types::{BenchmarkQuestion, ConversationSession, Turn};

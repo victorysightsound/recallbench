@@ -1,6 +1,10 @@
 [workspace]
 members = [
     "recallbench",
+    "adapters/recallbench-femind",
+    "adapters/recallbench-mem0",
+    "adapters/recallbench-omega",
+    "adapters/recallbench-zep",
     "xtask",
 ]
 resolver = "3"

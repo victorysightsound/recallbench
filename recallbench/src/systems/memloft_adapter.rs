@@ -56,7 +56,7 @@ impl MemorySystem for MemloftAdapter {
         // Concatenate turns into session chunks for storage
         // Each chunk becomes a memloft memory with category "note"
         let turns_iter = session.turns.iter().map(|t| (t.role.as_str(), t.content.as_str()));
-        let chunks = mindcore::ingest::chunking::chunk_session(turns_iter, &session_date, 2000, 10);
+        let chunks = femind::ingest::chunking::chunk_session(turns_iter, &session_date, 2000, 10);
 
         for (idx, chunk) in chunks.iter().enumerate() {
             let topic = format!("session-{}-chunk-{}", session.id, idx);

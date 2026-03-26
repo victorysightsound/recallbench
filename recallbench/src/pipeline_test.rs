@@ -11,8 +11,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::types::BenchmarkQuestion;
-
 /// Configuration for a pipeline test run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineConfig {

@@ -1,8 +1,8 @@
-# MindCore LongMemEval Optimization History
+# Femind LongMemEval Optimization History
 
-Results from the v1 → v4 optimization journey that brought MindCore from 87.0% to 95.6% on LongMemEval Oracle, surpassing OMEGA Memory's 95.4%.
+Results from the v1 → v4 optimization journey that brought Femind from 87.0% to 95.6% on LongMemEval Oracle, surpassing OMEGA Memory's 95.4%.
 
-All runs below were executed via mindcore-bench (now deprecated) and imported into RecallBench for historical tracking.
+The early runs below were produced by Femind's original in-repo benchmark harness and imported into RecallBench for historical tracking.
 
 ## Results Summary
 
@@ -83,20 +83,20 @@ Fixed verification (excluded temporal), added preference and abstention improvem
 ### Results (JSONL)
 | File | Description |
 |------|-------------|
-| `mindcore-longmemeval-v1-via-mindcore-bench.jsonl` | v1 results (500 questions, 87.0%) |
-| `mindcore-longmemeval-v2-via-mindcore-bench.jsonl` | v2 results (500 questions, 94.8%) |
-| `mindcore-longmemeval-v3-via-mindcore-bench.jsonl` | v3 results (500 questions, 92.4% — temporal verification regression) |
-| `mindcore-longmemeval-v4-via-mindcore-bench.jsonl` | v4 results (500 questions, 95.6% — current best) |
-| `mindcore-longmemeval-v3-draft-via-mindcore-bench.jsonl` | v3-draft results (500 questions, 92.4% — failed temporal verification, kept for research) |
+| `femind-longmemeval-v1.jsonl` | v1 results (500 questions, 87.0%) |
+| `femind-longmemeval-v2.jsonl` | v2 results (500 questions, 94.8%) |
+| `femind-longmemeval-v3.jsonl` | v3 results (500 questions, 92.4% — temporal verification regression) |
+| `femind-longmemeval-v4.jsonl` | v4 results (500 questions, 95.6% — current best) |
+| `femind-longmemeval-v5.jsonl` | v5 RecallBench parity run (500 questions, 96.0%) |
 | `*.meta.json` | Run metadata for each version |
 
 ### Runtime Logs
 | File | Description |
 |------|-------------|
-| `mindcore-v1-runtime.log` | v1 runtime log with per-question processing details |
-| `mindcore-v2-runtime.log` | v2 runtime log |
-| `mindcore-v3-runtime.log` | v3 runtime log (temporal verification regression) |
-| `mindcore-v4-runtime.log` | v4 runtime log (current best) |
+| `femind-v1-runtime.log` | v1 runtime log with per-question processing details |
+| `femind-v2-runtime.log` | v2 runtime log |
+| `femind-v3-runtime.log` | v3 runtime log (temporal verification regression) |
+| `femind-v4-runtime.log` | v4 runtime log (current best) |
 
 ### Analysis Documents
 | File | Description |

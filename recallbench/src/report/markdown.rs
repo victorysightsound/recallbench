@@ -64,8 +64,8 @@ mod tests {
             total_questions: 100,
             total_correct: 89,
         };
-        let md = render_accuracy_markdown(&[("MindCore", &metrics)], "longmemeval", "oracle");
-        assert!(md.contains("| MindCore |"));
+        let md = render_accuracy_markdown(&[("Femind", &metrics)], "longmemeval", "oracle");
+        assert!(md.contains("| Femind |"));
         assert!(md.contains("94.0%"));
         assert!(md.contains("## RecallBench"));
     }

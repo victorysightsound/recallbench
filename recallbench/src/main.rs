@@ -3,7 +3,7 @@
 mod checkpoint;
 mod config;
 mod datasets;
-#[cfg(feature = "mindcore-adapter")]
+#[cfg(feature = "femind-adapter")]
 mod embedding_cache;
 mod errors;
 mod extraction_test;
@@ -221,7 +221,7 @@ enum Commands {
     /// Test retrieval quality without LLM calls (zero cost, instant feedback)
     RetrievalTest {
         /// System name
-        #[arg(long, default_value = "mindcore-api")]
+        #[arg(long, default_value = "femind-api")]
         system: String,
         /// Dataset name
         #[arg(long, default_value = "longmemeval")]
@@ -280,8 +280,8 @@ enum Commands {
 
     /// Test full pipeline: extraction → storage → graph → search (modular, each step toggleable)
     PipelineTest {
-        /// System name (mindcore-extract for full pipeline)
-        #[arg(long, default_value = "mindcore-extract")]
+        /// System name (femind-extract for full pipeline)
+        #[arg(long, default_value = "femind-extract")]
         system: String,
         /// Dataset name
         #[arg(long, default_value = "memoryagentbench")]
@@ -427,8 +427,8 @@ async fn main() -> Result<()> {
 
             let mem_system: Box<dyn traits::MemorySystem> = match system.as_str() {
                 "echo" => Box::new(systems::echo::EchoSystem::new()),
-                #[cfg(feature = "mindcore")]
-                "mindcore" => Box::new(recallbench_mindcore::MindCoreAdapter::new()?),
+                #[cfg(feature = "femind-adapter")]
+                "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
                 _ => anyhow::bail!("Unknown system: {system}"),
             };
 
@@ -684,10 +684,10 @@ async fn cmd_run(
     } else {
         match system_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
-            #[cfg(feature = "mindcore-adapter")]
-            "mindcore" => Box::new(systems::mindcore_adapter::MindCoreAdapter::new()?),
-            #[cfg(feature = "mindcore-adapter")]
-            "mindcore-api" | "mindcore-fallback" => {
+            #[cfg(feature = "femind-adapter")]
+            "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
+            #[cfg(feature = "femind-adapter")]
+            "femind-api" | "femind-fallback" => {
                 let key_output = std::process::Command::new("sh")
                     .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
                     .output()?;
@@ -695,37 +695,37 @@ async fn cmd_run(
                 if api_key.is_empty() {
                     anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
                 }
-                if system_name == "mindcore-api" {
-                    Box::new(systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?)
+                if system_name == "femind-api" {
+                    Box::new(systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?)
                 } else {
-                    Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
+                    Box::new(systems::femind_adapter::FemindAdapter::with_api_and_local_fallback(&api_key)?)
                 }
             },
-            #[cfg(feature = "mindcore-adapter")]
-            "mindcore-mab" => {
+            #[cfg(feature = "femind-adapter")]
+            "femind-mab" => {
                 let key_output = std::process::Command::new("sh")
                     .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
                     .output()?;
                 let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
                 Box::new(
-                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
-                        .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
+                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+                        .with_assembly_config(femind::context::AssemblyConfig::single_document())
                 )
             },
-            #[cfg(feature = "mindcore-adapter")]
-            "mindcore-extract" => {
+            #[cfg(feature = "femind-adapter")]
+            "femind-extract" => {
                 let key_output = std::process::Command::new("sh")
                     .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
                     .output()?;
                 let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
-                let llm = Box::new(mindcore::llm::ApiLlmCallback::new(
+                let llm = Box::new(femind::llm::ApiLlmCallback::new(
                     "https://api.deepinfra.com/v1/openai",
                     &api_key,
                     "",
                 ));
                 Box::new(
-                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
-                        .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
+                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+                        .with_assembly_config(femind::context::AssemblyConfig::single_document())
                         .with_llm(llm)
                 )
             },
@@ -741,7 +741,7 @@ async fn cmd_run(
 
     // Build or load embedding cache if system supports it
     // Skip cache for extraction-based systems (they do their own ingest)
-        let embedding_cache = if system.supports_precomputed() && system_name != "mindcore-extract" {
+        let embedding_cache = if system.supports_precomputed() && system_name != "femind-extract" {
         let model_name = "sentence-transformers/all-MiniLM-L6-v2";
         if embedding_cache::EmbeddingCache::exists(&dataset, &variant, model_name) {
             tracing::info!("Using cached embeddings for {dataset}/{variant}");
@@ -758,14 +758,14 @@ async fn cmd_run(
                 .filter(|k| !k.is_empty());
 
             if let Some(key) = api_key {
-                let backend = mindcore::embeddings::ApiBackend::deepinfra_minilm(&key);
+                let backend = femind::embeddings::ApiBackend::deepinfra_minilm(&key);
                 let cache = embedding_cache::EmbeddingCache::build(
                     &dataset, &variant, ds.questions(), &backend, 1000, 10,
                 )?;
                 Some(cache)
             } else {
                 tracing::warn!("No DeepInfra API key found, building cache with local model...");
-                let backend = mindcore::embeddings::CandleNativeBackend::new()?;
+                let backend = femind::embeddings::CandleNativeBackend::new()?;
                 let cache = embedding_cache::EmbeddingCache::build(
                     &dataset, &variant, ds.questions(), &backend, 1000, 10,
                 )?;
@@ -856,8 +856,8 @@ async fn cmd_stress(
 
     let system: Box<dyn traits::MemorySystem> = match system_name {
         "echo" => Box::new(systems::echo::EchoSystem::new()),
-        #[cfg(feature = "mindcore")]
-        "mindcore" => Box::new(recallbench_mindcore::MindCoreAdapter::new()?),
+        #[cfg(feature = "femind-adapter")]
+        "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
         _ => anyhow::bail!("Unknown system: {system_name}"),
     };
 
@@ -922,8 +922,8 @@ async fn cmd_budget_sweep(
 
     let system: Box<dyn traits::MemorySystem> = match system_name {
         "echo" => Box::new(systems::echo::EchoSystem::new()),
-        #[cfg(feature = "mindcore")]
-        "mindcore" => Box::new(recallbench_mindcore::MindCoreAdapter::new()?),
+        #[cfg(feature = "femind-adapter")]
+        "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
         _ => anyhow::bail!("Unknown system: {system_name}"),
     };
 
@@ -1024,13 +1024,13 @@ async fn cmd_compare(
     for sys_name in &system_names {
         let system: Box<dyn traits::MemorySystem> = match *sys_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
-            #[cfg(feature = "mindcore-adapter")]
-            "mindcore" => match systems::mindcore_adapter::MindCoreAdapter::new() {
+            #[cfg(feature = "femind-adapter")]
+            "femind" => match systems::femind_adapter::FemindAdapter::new() {
                 Ok(a) => Box::new(a),
-                Err(e) => { tracing::error!("Failed to create MindCore adapter: {e}"); continue; }
+                Err(e) => { tracing::error!("Failed to create Femind adapter: {e}"); continue; }
             },
-            #[cfg(feature = "mindcore-adapter")]
-            "mindcore-api" | "mindcore-fallback" => {
+            #[cfg(feature = "femind-adapter")]
+            "femind-api" | "femind-fallback" => {
                 // Fetch DeepInfra API key from keychain
                 let key_result = std::process::Command::new("sh")
                     .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
@@ -1044,14 +1044,14 @@ async fn cmd_compare(
                         continue;
                     }
                 };
-                let adapter = if *sys_name == "mindcore-api" {
-                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)
+                let adapter = if *sys_name == "femind-api" {
+                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)
                 } else {
-                    systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)
+                    systems::femind_adapter::FemindAdapter::with_api_and_local_fallback(&api_key)
                 };
                 match adapter {
                     Ok(a) => Box::new(a),
-                    Err(e) => { tracing::error!("Failed to create MindCore API adapter: {e}"); continue; }
+                    Err(e) => { tracing::error!("Failed to create Femind API adapter: {e}"); continue; }
                 }
             },
             _ => {
@@ -1159,23 +1159,23 @@ async fn cmd_retrieval_test(
     // Create system
     let system: Box<dyn traits::MemorySystem> = match system_name {
         "echo" => Box::new(systems::echo::EchoSystem::new()),
-        #[cfg(feature = "mindcore-adapter")]
-        "mindcore" => Box::new(systems::mindcore_adapter::MindCoreAdapter::new()?),
-        #[cfg(feature = "mindcore-adapter")]
-        "mindcore-api" | "mindcore-fallback" | "mindcore-mab" => {
+        #[cfg(feature = "femind-adapter")]
+        "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
+        #[cfg(feature = "femind-adapter")]
+        "femind-api" | "femind-fallback" | "femind-mab" => {
             let key_output = std::process::Command::new("sh")
                 .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
                 .output()?;
             let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
-            if system_name == "mindcore-mab" {
+            if system_name == "femind-mab" {
                 Box::new(
-                    systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
-                        .with_assembly_config(mindcore::context::AssemblyConfig::single_document())
+                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+                        .with_assembly_config(femind::context::AssemblyConfig::single_document())
                 )
-            } else if system_name == "mindcore-api" {
-                Box::new(systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?)
+            } else if system_name == "femind-api" {
+                Box::new(systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?)
             } else {
-                Box::new(systems::mindcore_adapter::MindCoreAdapter::with_api_and_local_fallback(&api_key)?)
+                Box::new(systems::femind_adapter::FemindAdapter::with_api_and_local_fallback(&api_key)?)
             }
         },
         _ => anyhow::bail!("Unknown system: {system_name}"),
@@ -1347,7 +1347,7 @@ async fn cmd_extraction_test(
         anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
     }
 
-    let llm = mindcore::llm::ApiLlmCallback::new(
+    let llm = femind::llm::ApiLlmCallback::new(
         "https://api.deepinfra.com/v1/openai",
         &api_key,
         model,
@@ -1501,9 +1501,9 @@ async fn cmd_pipeline_test(
         .output()?;
     let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
 
-    // Build the MindCore adapter with configured features
-    let mut adapter = systems::mindcore_adapter::MindCoreAdapter::with_deepinfra_api(&api_key)?
-        .with_assembly_config(mindcore::context::AssemblyConfig {
+    // Build the Femind adapter with configured features
+    let mut adapter = systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+        .with_assembly_config(femind::context::AssemblyConfig {
             max_per_session,
             recency_boost: recency,
             search_limit: 200,
@@ -1520,10 +1520,10 @@ async fn cmd_pipeline_test(
 
     // Add LLM if extraction is enabled
     if extraction {
-        let llm: Box<dyn mindcore::traits::LlmCallback> = if config.llm_model == "haiku" {
-            Box::new(mindcore::llm::CliLlmCallback::claude("haiku"))
+        let llm: Box<dyn femind::traits::LlmCallback> = if config.llm_model == "haiku" {
+            Box::new(femind::llm::CliLlmCallback::claude("haiku"))
         } else {
-            Box::new(mindcore::llm::ApiLlmCallback::new(
+            Box::new(femind::llm::ApiLlmCallback::new(
                 "https://api.deepinfra.com/v1/openai",
                 &api_key,
                 &config.llm_model,
