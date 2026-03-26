@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{NaiveDate, TimeZone, Utc};
 use femind::context::ContextBudget;
 use femind::embeddings::{ApiBackend, CandleNativeBackend, EmbeddingBackend, FallbackBackend};
 use femind::engine::MemoryEngine;
@@ -143,7 +143,7 @@ impl FemindAdapter {
                 session_index: 0,
                 turn_index: *chunk_index,
                 session_date: session_date.clone(),
-                created_at: Utc::now(),
+                created_at: parse_session_date(session_date),
             };
 
             match store.store(db, &record) {
@@ -285,6 +285,7 @@ impl MemorySystem for FemindAdapter {
     async fn ingest_session(&self, session: &ConversationSession) -> Result<IngestStats> {
         let start = std::time::Instant::now();
         let session_date = session.date.clone().unwrap_or_default();
+        let session_created_at = parse_session_date(&session_date);
 
         // If LLM extraction is enabled, use store_with_extraction()
         if let Some(ref llm) = self.llm {
@@ -294,7 +295,9 @@ impl MemorySystem for FemindAdapter {
                 .join("\n");
 
             let engine = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let before_max_id = max_memory_id(&engine)?;
             let result = engine.store_with_extraction(&full_text, llm.as_ref())?;
+            stamp_new_memories_created_at(&engine, before_max_id, session_created_at)?;
 
             return Ok(IngestStats {
                 memories_stored: result.memories_stored,
@@ -315,7 +318,7 @@ impl MemorySystem for FemindAdapter {
                 session_index: 0,
                 turn_index: idx,
                 session_date: session_date.clone(),
-                created_at: Utc::now(),
+                created_at: session_created_at,
             })
             .collect();
 
@@ -355,6 +358,55 @@ impl MemorySystem for FemindAdapter {
     }
 }
 
+fn parse_session_date(session_date: &str) -> chrono::DateTime<Utc> {
+    if session_date.is_empty() {
+        return Utc::now();
+    }
+
+    if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(session_date) {
+        return parsed.with_timezone(&Utc);
+    }
+
+    if let Ok(date) = NaiveDate::parse_from_str(session_date, "%Y-%m-%d") {
+        if let Some(dt) = date.and_hms_opt(0, 0, 0) {
+            return Utc.from_utc_datetime(&dt);
+        }
+    }
+
+    tracing::warn!("Failed to parse session date '{session_date}', falling back to current time");
+    Utc::now()
+}
+
+fn max_memory_id(engine: &MemoryEngine<ConversationMemory>) -> Result<i64> {
+    Ok(engine.database().with_reader(|conn| {
+        let max_id = conn.query_row("SELECT COALESCE(MAX(id), 0) FROM memories", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+        Ok(max_id)
+    })?)
+}
+
+fn stamp_new_memories_created_at(
+    engine: &MemoryEngine<ConversationMemory>,
+    before_max_id: i64,
+    created_at: chrono::DateTime<Utc>,
+) -> Result<()> {
+    let created_at = created_at.to_rfc3339();
+    Ok(engine.database().with_writer(|conn| {
+        conn.execute(
+            "UPDATE memories
+             SET created_at = ?1,
+                 updated_at = CASE
+                     WHEN updated_at < ?1 THEN ?1
+                     ELSE updated_at
+                 END
+             WHERE id > ?2",
+            rusqlite::params![created_at, before_max_id],
+        )?;
+        Ok(())
+    })?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,5 +440,11 @@ mod tests {
         adapter.reset().await.unwrap();
         let result = adapter.retrieve_context("hello", None, 16384).await.unwrap();
         assert_eq!(result.items_retrieved, 0);
+    }
+
+    #[test]
+    fn parse_session_date_accepts_plain_dates() {
+        let parsed = parse_session_date("2024-01-15");
+        assert_eq!(parsed, Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap());
     }
 }
