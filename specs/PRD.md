@@ -2,8 +2,10 @@
 
 **Version:** 2.0
 **Date:** 2026-03-20
-**Status:** Ready for Implementation
-**Build System:** DIAL (Deterministic Iterative Agent Loop)
+**Status:** Implemented and under active maintenance
+**Source of truth:** `.docs/recallbench_spec.db`
+
+> Note: this document remains the human-readable product and architecture spec. The repo-local documentation database is the authoritative maintainer source of truth, and the build-phase sections near the end are retained as implementation history rather than current open work.
 
 ---
 

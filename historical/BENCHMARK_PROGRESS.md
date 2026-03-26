@@ -1,5 +1,7 @@
 # LongMemEval Benchmark Progress
 
+> Historical archive. This file captures the original femind benchmark investigation that was later imported into RecallBench.
+
 Tracking Femind's performance on the LongMemEval Oracle dataset (500 questions).
 
 ## Competitive Landscape

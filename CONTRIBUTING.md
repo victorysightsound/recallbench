@@ -1,5 +1,15 @@
 # Contributing to RecallBench
 
+## Documentation
+
+The repo-local documentation database is the maintainer source of truth:
+
+```bash
+sqlite3 .docs/recallbench_spec.db "SELECT section_id, title FROM sections ORDER BY sort_order;"
+```
+
+Keep the active Markdown docs aligned with `.docs/recallbench_spec.db`. The files under `historical/` are archival context and benchmark history, not the primary spec.
+
 ## Project Structure
 
 ```
@@ -22,7 +32,9 @@ recallbench/
 │       ├── report/             # Output formats (table, markdown, JSON, CSV, failure)
 │       ├── systems/            # Memory system adapters (echo, HTTP, subprocess)
 │       └── web/                # Web UI (axum server, static assets)
+├── .docs/                      # Repo-local documentation database
 ├── specs/                      # PRD and design documents
+├── historical/                 # Archived benchmark history and imported legacy runs
 └── .github/workflows/          # CI configuration
 ```
 

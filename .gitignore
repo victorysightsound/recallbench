@@ -4,3 +4,5 @@ results/
 recallbench/src/web/ui/node_modules/
 .dial/*.db-wal
 .dial/*.db-shm
+.docs/*.db-wal
+.docs/*.db-shm

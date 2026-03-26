@@ -3,6 +3,8 @@
 **Date:** 2026-03-20
 **Goal:** Resolve all gaps identified in alpha review. Make recallbench production-ready.
 
+> Historical implementation spec. The work tracked here has already been applied and is retained for maintenance history.
+
 ---
 
 ## Phase 1: Critical Stubs (High Severity)

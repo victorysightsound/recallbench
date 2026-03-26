@@ -1,5 +1,7 @@
 # Femind LongMemEval Optimization History
 
+> Historical archive. This file records imported benchmark history and should not be treated as the active RecallBench product spec.
+
 Results from the v1 → v4 optimization journey that brought Femind from 87.0% to 95.6% on LongMemEval Oracle, surpassing OMEGA Memory's 95.4%.
 
 The early runs below were produced by Femind's original in-repo benchmark harness and imported into RecallBench for historical tracking.

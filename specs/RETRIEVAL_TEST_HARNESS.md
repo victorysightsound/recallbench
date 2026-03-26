@@ -1,5 +1,7 @@
 # Retrieval Test Harness — Local Iteration Without LLM Costs
 
+> Implemented design note retained for maintenance reference. The current retrieval-test behavior should be kept aligned with `.docs/recallbench_spec.db`.
+
 ## Goal
 
 Build a local test harness in recallbench that measures retrieval quality
