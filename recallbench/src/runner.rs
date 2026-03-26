@@ -483,7 +483,9 @@ mod tests {
         };
 
         let mock = MockLLM;
-        let result = evaluate_question(&system, &question, &mock, &mock, 16384).await.unwrap();
+        let result = evaluate_question(&system, &question, &mock, &mock, 16384, None)
+            .await
+            .unwrap();
         assert_eq!(result.question_id, "q001");
         assert!(result.is_correct);
         assert!(result.ingest_latency_ms < 1000);

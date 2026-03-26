@@ -172,6 +172,7 @@ mod tests {
         let config = CustomEndpoint {
             base_url: "http://localhost:11434/v1".to_string(),
             api_key_env: "".to_string(),
+            api_key_cmd: None,
             model: "llama3.1:70b".to_string(),
             rate_limit_rpm: 0,
             rate_limit_tpm: 0,
