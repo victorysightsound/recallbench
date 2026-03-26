@@ -22,13 +22,36 @@ pub fn stratified_sample<'a>(
         by_type.entry(&q.question_type).or_default().push(i);
     }
 
+    let mut types: Vec<_> = by_type.into_iter().collect();
+    types.sort_by(|a, b| a.0.cmp(b.0)); // deterministic order
+
+    if subset_size < types.len() {
+        let mut ranked_types: Vec<(&str, Vec<usize>, u64)> = types.into_iter()
+            .map(|(qtype, indices)| {
+                let mut state = seed ^ 0x9E3779B97F4A7C15;
+                for b in qtype.as_bytes() {
+                    state = state.rotate_left(7) ^ u64::from(*b);
+                }
+                (qtype, indices, state)
+            })
+            .collect();
+        ranked_types.sort_by_key(|(_, _, score)| *score);
+
+        let mut selected_indices = Vec::with_capacity(subset_size);
+        for (qtype, mut indices, _) in ranked_types.into_iter().take(subset_size) {
+            deterministic_shuffle(&mut indices, seed ^ hash_str(qtype));
+            if let Some(idx) = indices.into_iter().next() {
+                selected_indices.push(idx);
+            }
+        }
+        selected_indices.sort();
+        return selected_indices.iter().map(|&i| &questions[i]).collect();
+    }
+
     // Calculate proportional allocation per type
     let total = questions.len() as f64;
     let mut allocations: Vec<(&str, usize, Vec<usize>)> = Vec::new();
     let mut allocated = 0usize;
-
-    let mut types: Vec<_> = by_type.into_iter().collect();
-    types.sort_by(|a, b| a.0.cmp(b.0)); // deterministic order
 
     for (qtype, indices) in &types {
         let proportion = indices.len() as f64 / total;
@@ -90,6 +113,15 @@ fn deterministic_shuffle(items: &mut [usize], seed: u64) {
         let j = (state as usize) % (i + 1);
         items.swap(i, j);
     }
+}
+
+fn hash_str(s: &str) -> u64 {
+    let mut state = 0xcbf29ce484222325u64;
+    for b in s.as_bytes() {
+        state ^= u64::from(*b);
+        state = state.wrapping_mul(0x100000001b3);
+    }
+    state
 }
 
 #[cfg(test)]
@@ -191,5 +223,15 @@ mod tests {
         assert!(type_counts.contains_key("c"));
         assert!(type_counts.contains_key("d"));
         assert!(type_counts.contains_key("e"));
+    }
+
+    #[test]
+    fn respects_subset_size_when_types_exceed_budget() {
+        let questions = make_questions(&[
+            ("a", 10), ("b", 10), ("c", 10), ("d", 10),
+            ("e", 10), ("f", 10), ("g", 10), ("h", 10),
+        ]);
+        let subset = stratified_sample(&questions, 2, 42);
+        assert_eq!(subset.len(), 2);
     }
 }

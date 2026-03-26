@@ -1463,6 +1463,22 @@ async fn cmd_pipeline_test(
     quick_size: Option<usize>,
     verbose: bool,
 ) -> Result<()> {
+    fn session_fingerprint(question: &types::BenchmarkQuestion) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        for session in &question.sessions {
+            session.id.hash(&mut hasher);
+            session.date.hash(&mut hasher);
+            for turn in &session.turns {
+                turn.role.hash(&mut hasher);
+                turn.content.hash(&mut hasher);
+            }
+        }
+        hasher.finish()
+    }
+
     // Build the pipeline config
     let config = pipeline_test::PipelineConfig {
         dataset: dataset.to_string(),
@@ -1539,27 +1555,50 @@ async fn cmd_pipeline_test(
     let ds = registry.load(dataset, variant, false).await?;
 
     let all_questions = ds.questions();
-    let questions: Vec<&types::BenchmarkQuestion> = if quick {
+    let mut questions: Vec<&types::BenchmarkQuestion> = if quick {
         let n = quick_size.unwrap_or(10);
-        all_questions.iter().take(n).collect()
+        sampling::stratified_sample(all_questions, n, 42)
     } else {
         all_questions.iter().collect()
     };
+    questions.sort_by_key(|q| session_fingerprint(q));
 
     println!("Testing {} questions...\n", questions.len());
 
     // Run each question through the pipeline
     let mut results = Vec::new();
+    let mut active_fingerprint: Option<u64> = None;
 
-    for question in &questions {
-        system.reset().await?;
+    for (index, question) in questions.iter().enumerate() {
+        let session_chars: usize = question.sessions.iter()
+            .flat_map(|s| s.turns.iter())
+            .map(|t| t.content.len())
+            .sum();
+        let fingerprint = session_fingerprint(question);
+        let reuse_ingest = active_fingerprint == Some(fingerprint);
+        println!(
+            "[{}/{}] {} [{}] sessions={} chars={} reuse_ingest={}",
+            index + 1,
+            questions.len(),
+            &question.id[..question.id.len().min(24)],
+            &question.question_type[..question.question_type.len().min(24)],
+            question.sessions.len(),
+            session_chars,
+            if reuse_ingest { "yes" } else { "no" },
+        );
 
         // Ingest
-        let ingest_start = std::time::Instant::now();
-        for session in &question.sessions {
-            system.ingest_session(session).await?;
-        }
-        let _ingest_ms = ingest_start.elapsed().as_millis() as u64;
+        let ingest_ms = if reuse_ingest {
+            0
+        } else {
+            system.reset().await?;
+            let ingest_start = std::time::Instant::now();
+            for session in &question.sessions {
+                system.ingest_session(session).await?;
+            }
+            active_fingerprint = Some(fingerprint);
+            ingest_start.elapsed().as_millis() as u64
+        };
 
         // Retrieve
         let retrieval_start = std::time::Instant::now();
@@ -1585,12 +1624,19 @@ async fn cmd_pipeline_test(
             retrieval_ms,
         };
 
+        let status = if answer_in_context { "✓" } else { "✗" };
+        println!(
+            "  {} tokens={} retrieval_ms={} ingest_ms={}",
+            status,
+            retrieval.tokens_used,
+            retrieval_ms,
+            ingest_ms,
+        );
         if verbose {
-            let status = if answer_in_context { "✓" } else { "✗" };
-            println!("  {} {} [{}] tokens={} ({:.0}ms)",
-                status, &question.id[..question.id.len().min(15)],
-                &question.question_type[..question.question_type.len().min(20)],
-                retrieval.tokens_used, retrieval_ms);
+            println!(
+                "  question: {}",
+                question.question
+            );
         }
 
         results.push(qr);

@@ -367,6 +367,10 @@ fn parse_session_date(session_date: &str) -> chrono::DateTime<Utc> {
         return parsed.with_timezone(&Utc);
     }
 
+    if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(session_date, "%Y/%m/%d (%a) %H:%M") {
+        return Utc.from_utc_datetime(&parsed);
+    }
+
     if let Ok(date) = NaiveDate::parse_from_str(session_date, "%Y-%m-%d") {
         if let Some(dt) = date.and_hms_opt(0, 0, 0) {
             return Utc.from_utc_datetime(&dt);
@@ -446,5 +450,11 @@ mod tests {
     fn parse_session_date_accepts_plain_dates() {
         let parsed = parse_session_date("2024-01-15");
         assert_eq!(parsed, Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn parse_session_date_accepts_longmemeval_timestamps() {
+        let parsed = parse_session_date("2023/07/12 (Wed) 10:06");
+        assert_eq!(parsed, Utc.with_ymd_and_hms(2023, 7, 12, 10, 6, 0).unwrap());
     }
 }

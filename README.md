@@ -43,6 +43,37 @@ recallbench report results/echo-longmemeval-oracle.jsonl --format markdown
 recallbench serve
 ```
 
+## Femind Confirmation Workflow
+
+Use `recallbench` in two stages when validating `femind`:
+
+```bash
+# Retrieval-only baseline on LongMemEval
+recallbench retrieval-test \
+  --system femind-api \
+  --dataset longmemeval \
+  --variant small \
+  --quick
+
+# Production-like extraction path on MemoryAgentBench
+recallbench pipeline-test \
+  --system femind-extract \
+  --dataset memoryagentbench \
+  --variant conflict_resolution \
+  --extraction \
+  --graph \
+  --embedding \
+  --dedup \
+  --extract-model openai/gpt-oss-120b \
+  --quick --quick-size 2
+```
+
+Notes:
+- `retrieval-test` is the correct fast baseline for LongMemEval because it carries `answer_session_ids`.
+- `MemoryAgentBench` does not populate `answer_session_ids`, so use `pipeline-test` there instead of `retrieval-test`.
+- Quick pipeline runs now honor `--quick-size`, print per-question progress, and reuse ingested session corpora when multiple sampled questions share the same context.
+- `MemoryAgentBench` contexts can still be very large, so even quick extraction runs are deliberate confirmation runs rather than cheap smoke tests.
+
 ## Supported Datasets
 
 | Dataset | Source | Description |

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Parse LongMemEval session timestamps in the native `femind` adapter so retrieval runs preserve dataset chronology instead of falling back to current time
+- Make `pipeline-test --quick-size N` respect the requested sample budget even when a dataset has more question types than the budget
+- Reuse ingested session corpora during pipeline tests when multiple sampled questions share the same underlying context
+
+### Improved
+- Add per-question progress output to `pipeline-test` so long extraction runs are observable
+- Document the recommended `femind` confirmation workflow: `retrieval-test` for LongMemEval and `pipeline-test` for MemoryAgentBench conflict resolution
+
 ## 0.4.0 (2026-03-21)
 
 All remaining enhancements implemented. No known gaps.
