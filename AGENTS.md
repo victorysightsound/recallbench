@@ -23,7 +23,7 @@ session-context
 | `README.md` | Public project overview and usage |
 | `CONTRIBUTING.md` | Maintainer workflow, workspace layout, and test guidance |
 | `specs/PRD.md` | Main architecture and product spec |
-| `.docs/recallbench_spec.db` | Authoritative repo-local architecture and planning database |
+| `.docs/recallbench_spec.db` | Authoritative repo-local architecture and implementation database |
 | `historical/` | Archived benchmark history and imported legacy runs |
 
 ---
@@ -47,18 +47,7 @@ The active Markdown docs in this repo should stay aligned with `.docs/recallbenc
 
 ---
 
-## DIAL
-
-This repo keeps a DIAL project history in `.dial/foundation.db`.
-
-### Quick Reference
-
-```bash
-sqlite3 .dial/foundation.db "SELECT key, value FROM config ORDER BY key;"
-sqlite3 .dial/foundation.db "SELECT id, description, status FROM tasks ORDER BY id LIMIT 20;"
-```
-
-### Build/Test Defaults
+## Build/Test Defaults
 
 ```bash
 cargo build --workspace
@@ -71,5 +60,5 @@ cargo check --workspace
 ## External-Facing Writing
 
 - Keep README files, specs, changelogs, commit messages, PR text, and code comments in normal developer voice.
-- Do not describe implementation work in terms of agent runs, autonomous loops, model names, or internal AI workflow mechanics.
+- Do not describe implementation work in process language that reads like internal automation or prompt transcripts.
 - Mention AI, LLMs, datasets, judging, or orchestration only when they are part of the actual RecallBench product surface being documented.

@@ -706,7 +706,7 @@ tower-http = { version = "0.6", features = ["fs", "cors"] }  # Static file servi
 
 ---
 
-## 17. DIAL Build Phases
+## 17. Historical Build Phases
 
 Each phase produces a working, testable increment. Tasks are ordered for dependency resolution — each task builds on previous tasks within and across phases.
 
@@ -902,19 +902,11 @@ RecallBench supports multiple LLM providers for both generation and judging. Eac
 
 ---
 
-## 18. DIAL Configuration
+## 18. Historical Build Configuration
 
 ```bash
-# Initialize DIAL for recallbench
-cd ~/projects/recallbench
-dial init --phase foundation
-
-# Configure build/test
-dial config set build_cmd "cargo build --workspace"
-dial config set test_cmd "cargo test --workspace"
-
-# Index specs
-dial index
+cargo build --workspace
+cargo test --workspace
 ```
 
 **Total: 13 phases, 89 tasks**
@@ -961,7 +953,7 @@ Build order enforces dependencies:
 | API rate limits during concurrent eval | Per-provider rate limiter with configurable RPM/TPM |
 | Memory systems with incompatible APIs | Generic HTTP + subprocess adapters as fallbacks |
 | Dataset licensing restrictions | Download on demand, never bundle datasets in the crate |
-| Scope creep during DIAL iterations | Strict one-task-per-iteration, no feature additions beyond spec |
+| Scope creep during implementation | Strict one-task-per-iteration, no feature additions beyond spec |
 | LongMemEval methodology drift | Pin dataset version, document exact judge prompts |
 | memorybench (competitor) gaining traction | Ship faster, differentiate on Rust performance + latency profiling + longevity testing + vendor neutrality |
 | Web UI scope creep | Vanilla JS only, no frameworks, no build step — function over polish |
