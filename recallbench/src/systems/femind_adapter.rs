@@ -12,7 +12,7 @@ use femind::context::ContextBudget;
 use femind::embeddings::{ApiBackend, CandleNativeBackend, EmbeddingBackend, FallbackBackend};
 use femind::engine::MemoryEngine;
 use femind::memory::store::StoreResult;
-use femind::traits::{MemoryRecord, MemoryType};
+use femind::traits::{MemoryMeta, MemoryRecord, MemoryType, ScoringStrategy};
 use serde::{Deserialize, Serialize};
 
 use crate::traits::MemorySystem;
@@ -58,6 +58,22 @@ pub struct FemindAdapter {
     llm: Option<Box<dyn femind::traits::LlmCallback>>,
 }
 
+#[derive(Debug)]
+struct IdentityScorer;
+
+impl ScoringStrategy for IdentityScorer {
+    fn score_multiplier(&self, _record: &MemoryMeta, _query: &str, _base_score: f32) -> f32 {
+        1.0
+    }
+}
+
+fn benchmark_engine_config() -> femind::engine::EngineConfig {
+    let mut config = femind::engine::EngineConfig::default();
+    config.strict_grounding_enabled = false;
+    config.query_alignment_enabled = false;
+    config
+}
+
 impl FemindAdapter {
     /// Create with the default local CandleNativeBackend (all-MiniLM-L6-v2).
     pub fn new() -> Result<Self> {
@@ -85,6 +101,8 @@ impl FemindAdapter {
     /// Create with a custom embedding backend (API, local, or fallback).
     pub fn with_backend(backend: std::sync::Arc<dyn EmbeddingBackend>) -> Result<Self> {
         let engine = MemoryEngine::<ConversationMemory>::builder()
+            .scoring(IdentityScorer)
+            .config(benchmark_engine_config())
             .embedding_backend_arc(std::sync::Arc::clone(&backend))
             .build()?;
         Ok(Self {
@@ -272,6 +290,8 @@ impl MemorySystem for FemindAdapter {
     async fn reset(&self) -> Result<()> {
         // Reuse the existing backend Arc — no model reload needed
         let new_engine = MemoryEngine::<ConversationMemory>::builder()
+            .scoring(IdentityScorer)
+            .config(benchmark_engine_config())
             .embedding_backend_arc(std::sync::Arc::clone(&self.backend))
             .build()?;
         let mut guard = self.engine.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
