@@ -355,6 +355,15 @@ pub fn build_generation_prompt(
             .to_string()
     } else {
         match question_type {
+            "single-session-assistant" => {
+                "Instructions: The answer should come directly from what the assistant said in \
+                 the retrieved chat history. If the assistant's recommendation, list, sequence, \
+                 or answer appears in the history chats, restate it directly. Do NOT claim the \
+                 assistant response is missing or unavailable if an assistant message with the \
+                 needed information is present in the history chats. Give the answer directly \
+                 and concisely. End with a single line in the form: Final Answer: <answer>."
+                    .to_string()
+            }
             "single-session-preference" => {
                 "Instructions: Based on the chat history, describe what the user's CONTENT \
                  preferences would be when responding to this question. Focus on the TOPICS, \
@@ -387,6 +396,8 @@ pub fn build_generation_prompt(
                      event with its exact date. Then count them explicitly (1, 2, 3...) or \
                      compute the date arithmetic step by step. Do not estimate or shortcut. \
                      When counting days between dates, enumerate each step. \
+                     If the retrieved history contains the needed dates, do not say the answer \
+                     is missing. End with a single line in the form: Final Answer: <answer>. \
                      Current Date: {question_date}"
                 )
             }
@@ -395,7 +406,7 @@ pub fn build_generation_prompt(
                  updated across sessions, use the MOST RECENT value as the primary answer. \
                  IMPORTANT: List ALL versions of the relevant information chronologically with \
                  their session dates. Then clearly state the latest/most recent value as your \
-                 final answer."
+                 final answer. End with a single line in the form: Final Answer: <answer>."
                     .to_string()
             }
             "multi-session" => {
@@ -407,16 +418,20 @@ pub fn build_generation_prompt(
                  2. Number each relevant item explicitly with its source session date. \
                  3. Be thorough — if the question asks \"how many\" or to list items, you must \
                  find ALL instances across ALL sessions. Missing even one will make your answer wrong. \
-                 4. ONLY count items from conversations where the USER directly mentions or discusses \
-                 the item. Do not count items from unrelated conversations that happen to mention \
-                 similar topics. \
+                 4. Only count items explicitly supported by the history chats. Do not invent \
+                 hidden items, but also do not say information is missing if the relevant item \
+                 is stated in the history. \
                  5. After enumerating, give your final count or answer. \
-                 6. If you are unsure whether something counts, include it but note your uncertainty."
+                 6. End with a single line in the form: Final Answer: <answer>. \
+                 7. Do not hedge with multiple possible totals. Pick the best supported answer \
+                 from the retrieved history."
                     .to_string()
             }
             _ => {
                 "Instructions: Answer the question based on the chat history. \
-                 First extract the relevant information, then provide a concise answer."
+                 First extract the relevant information, then provide a concise answer. \
+                 If the answer is explicitly present in the history chats, do not say it is \
+                 missing. End with a single line in the form: Final Answer: <answer>."
                     .to_string()
             }
         }

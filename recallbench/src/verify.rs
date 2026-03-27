@@ -8,8 +8,13 @@ use anyhow::Result;
 
 use crate::traits::LLMClient;
 
+const ENABLE_SELF_VERIFICATION: bool = false;
+
 /// Check if a question type benefits from self-verification.
 pub fn needs_verification(question_type: &str, is_abstention: bool) -> bool {
+    if !ENABLE_SELF_VERIFICATION {
+        return false;
+    }
     if is_abstention {
         return false;
     }
