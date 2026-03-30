@@ -64,12 +64,16 @@ pub fn judge_prompt(
                  You MUST search the ENTIRE response from start to finish — the correct \
                  answer may appear in the middle of reasoning, inside a table cell, in a \
                  parenthetical, or as part of a calculation, NOT just in the final conclusion. \
-                 If the required answer is a number, answer \"yes\" if that exact number appears \
-                 ANYWHERE in the response — even if the model's final stated answer is different. \
+                 However, if the response gives an explicit final answer, final count, final \
+                 conclusion, or a clearly labeled \"Final Answer\", judge the response by that \
+                 final answer rather than by intermediate reasoning. \
+                 If the required answer is a number, do NOT answer \"yes\" merely because that \
+                 number appears somewhere in the reasoning when the model's final stated answer \
+                 is different. \
                  If the required answer is a dollar amount, accept with or without the $ sign, \
                  and accept minor formatting differences ($5 vs $5.00 vs 5 dollars). \
                  If the required answer is a list of items, answer \"yes\" if ALL required items \
-                 appear somewhere in the response, even if the model's count differs. \
+                 appear somewhere in the response and the model's final answer does not contradict them. \
                  Accept equivalent phrasings: \"2 AM\" matches \"2am\", \"two in the morning\", etc. \
                  Answer \"yes\" if the required information is present. Answer \"no\" ONLY if \
                  the required answer genuinely does not appear anywhere in the response."
@@ -131,6 +135,7 @@ mod tests {
     fn multi_session_prompt() {
         let prompt = judge_prompt("multi-session", "Summary?", "A and B", "A and B", false);
         assert!(prompt.contains("ENTIRE response"));
+        assert!(prompt.contains("final stated answer"));
     }
 
     #[test]
