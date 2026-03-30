@@ -19,6 +19,20 @@ pub trait MemorySystem: Send + Sync {
     /// Reset all state. Called between questions for isolation.
     async fn reset(&self) -> Result<()>;
 
+    /// Prepare any question-scoped persistent state before reset/ingest.
+    ///
+    /// Default: no-op. Systems with reusable local corpora can use this hook to
+    /// load or build a question-specific store once, then skip repeated ingest on
+    /// subsequent benchmark runs.
+    async fn prepare_question(
+        &self,
+        _dataset: &str,
+        _variant: &str,
+        _question: &BenchmarkQuestion,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Ingest a conversation session into the memory system.
     async fn ingest_session(&self, session: &ConversationSession) -> Result<IngestStats>;
 

@@ -10,10 +10,26 @@ quick_size = 50
 mode = "cli"
 rate_limit_rpm = 60
 
-# DeepInfra GPT-OSS-120B — use with --gen-model deepinfra
-[llm.deepinfra]
+# DeepInfra GPT-OSS-120B — good extraction default, not ideal for judged runs
+[llm.deepinfra-gptoss]
 base_url = "https://api.deepinfra.com/v1/openai"
 api_key_cmd = "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"
 model = "openai/gpt-oss-120b"
 rate_limit_rpm = 120
 rate_limit_tpm = 0
+
+# DeepInfra GLM-4.7-Flash — preferred judged benchmark API lane
+[llm.deepinfra-glm]
+base_url = "https://api.deepinfra.com/v1/openai"
+api_key_cmd = "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"
+model = "zai-org/GLM-4.7-Flash"
+rate_limit_rpm = 120
+rate_limit_tpm = 0
+
+[embeddings.remote_service]
+enabled = true
+base_url = "http://127.0.0.1:18899/embed"
+auth_token_env = "FEMIND_REMOTE_EMBED_TOKEN"
+auth_token_env_file = "/Users/johndeaton/.config/recallbench/femind-remote.env"
+timeout_secs = 30
+fallback_to_local = true

@@ -130,6 +130,8 @@ pub async fn run_benchmark(
 
         let result = evaluate_question(
             system,
+            dataset.name(),
+            dataset.variant(),
             question,
             gen_llm.as_ref(),
             judge_llm.as_ref(),
@@ -184,12 +186,19 @@ pub async fn run_benchmark(
 /// Evaluate a single question against a memory system.
 async fn evaluate_question(
     system: &dyn MemorySystem,
+    dataset_name: &str,
+    dataset_variant: &str,
     question: &BenchmarkQuestion,
     gen_llm: &dyn LLMClient,
     judge_llm: &dyn LLMClient,
     token_budget: usize,
     cache_path: Option<&std::path::Path>,
 ) -> Result<EvalResult> {
+    // 0. Prepare any persistent question-scoped corpus before reset/ingest.
+    system
+        .prepare_question(dataset_name, dataset_variant, question)
+        .await?;
+
     // 1. Reset
     system.reset().await?;
 
@@ -282,7 +291,7 @@ async fn evaluate_question(
         &question.question_type,
         question.is_abstention,
     );
-    let mut hypothesis = gen_llm.generate(&prompt, 512).await?;
+    let mut hypothesis = gen_llm.generate(&prompt, 1536).await?;
 
     // 4b. Self-verification pass (multi-session, knowledge-update only)
     hypothesis = verify::maybe_verify(
@@ -498,7 +507,16 @@ mod tests {
         };
 
         let mock = MockLLM;
-        let result = evaluate_question(&system, &question, &mock, &mock, 16384, None)
+        let result = evaluate_question(
+            &system,
+            "test",
+            "test",
+            &question,
+            &mock,
+            &mock,
+            16384,
+            None,
+        )
             .await
             .unwrap();
         assert_eq!(result.question_id, "q001");

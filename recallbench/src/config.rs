@@ -9,6 +9,8 @@ pub struct Config {
     pub defaults: Defaults,
     #[serde(default)]
     pub llm: LlmConfig,
+    #[serde(default)]
+    pub embeddings: EmbeddingsConfig,
 }
 
 /// Default settings for benchmark runs.
@@ -153,8 +155,31 @@ impl Default for Config {
         Self {
             defaults: Defaults::default(),
             llm: LlmConfig::default(),
+            embeddings: EmbeddingsConfig::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EmbeddingsConfig {
+    #[serde(default)]
+    pub remote_service: Option<RemoteEmbeddingServiceConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RemoteEmbeddingServiceConfig {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub auth_token_env: Option<String>,
+    #[serde(default)]
+    pub auth_token_env_file: Option<PathBuf>,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub fallback_to_local: Option<bool>,
 }
 
 #[cfg(test)]

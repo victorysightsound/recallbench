@@ -26,7 +26,7 @@ pub async fn judge_answer(
         is_abstention,
     );
 
-    let response = judge_llm.generate(&prompt, 10).await?;
+    let response = judge_llm.generate(&prompt, 64).await?;
 
     Ok(parse_judgment(&response).unwrap_or(false))
 }

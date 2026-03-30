@@ -10,6 +10,7 @@
 ### Improved
 - Add per-question progress output to `pipeline-test` so long extraction runs are observable
 - Document the recommended `femind` confirmation workflow: `retrieval-test` for LongMemEval and `pipeline-test` for MemoryAgentBench conflict resolution
+- Add a persistent `femind-enhanced` benchmark lane that reuses locally ingested question-scoped corpora instead of rebuilding them on every run
 
 ## 0.4.0 (2026-03-21)
 

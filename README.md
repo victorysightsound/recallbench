@@ -68,11 +68,56 @@ recallbench pipeline-test \
   --quick --quick-size 2
 ```
 
+For the full-system enhanced lane, prebuild the local corpora first, then run the judged benchmark:
+
+```bash
+# One-time local corpus build for the sampled benchmark slice
+recallbench prebuild-corpora \
+  --dataset longmemeval \
+  --variant small \
+  --quick --quick-size 10
+
+# Judged run using the prebuilt local corpora
+recallbench run \
+  --system femind-enhanced \
+  --dataset longmemeval \
+  --variant small \
+  --quick --quick-size 10 \
+  --gen-model codex:gpt-5.4@high \
+  --judge-model codex:gpt-5.4@medium
+```
+
 Notes:
 - `retrieval-test` is the correct fast baseline for LongMemEval because it carries `answer_session_ids`.
 - `MemoryAgentBench` does not populate `answer_session_ids`, so use `pipeline-test` there instead of `retrieval-test`.
 - Quick pipeline runs now honor `--quick-size`, print per-question progress, and reuse ingested session corpora when multiple sampled questions share the same context.
 - `MemoryAgentBench` contexts can still be very large, so even quick extraction runs are deliberate confirmation runs rather than cheap smoke tests.
+- `femind-enhanced` keeps its question-scoped local corpora under `~/Library/Caches/recallbench/femind-corpora/` on macOS.
+
+## Femind Benchmark Modes
+
+RecallBench now supports two distinct `femind` benchmark lanes:
+
+- `femind-api`: canonical chunk-based LongMemEval lane for apples-to-apples retrieval benchmarking
+- `femind-enhanced`: full-system `femind` lane that ingests benchmark sessions into a persistent local corpus, then reuses that stored memory across later runs
+
+Use `femind-enhanced` when you want to evaluate the actual `femind` memory architecture instead of just the chunk baseline:
+
+```bash
+recallbench run \
+  --system femind-enhanced \
+  --dataset longmemeval \
+  --variant small \
+  --quick --quick-size 10 \
+  --gen-model codex:gpt-5.4@high \
+  --judge-model codex:gpt-5.4@medium
+```
+
+Enhanced-lane details:
+- Sessions are ingested once per question/session fingerprint and stored under `~/Library/Caches/recallbench/femind-corpora/` on macOS.
+- Stored corpora are reused across later runs as long as the ingest mode, embedding model, extraction model, and graph settings stay the same.
+- The enhanced lane uses hybrid ingest by default: raw chunk memories plus extracted semantic memories with graph expansion enabled.
+- Keep the chunk lane as the benchmark control; use the enhanced lane to measure the full `femind` system honestly.
 
 ## Supported Datasets
 

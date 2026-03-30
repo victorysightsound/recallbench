@@ -212,6 +212,32 @@ impl EmbeddingCache {
         Ok(Self { path })
     }
 
+    /// Open the first compatible cache for the provided model aliases.
+    pub fn open_compatible(
+        dataset: &str,
+        variant: &str,
+        model_names: &[String],
+    ) -> Result<Option<Self>> {
+        Self::open_compatible_with_chunk_size(dataset, variant, model_names, 1000)
+    }
+
+    /// Open the first compatible cache for the provided model aliases and chunk size.
+    pub fn open_compatible_with_chunk_size(
+        dataset: &str,
+        variant: &str,
+        model_names: &[String],
+        chunk_size: usize,
+    ) -> Result<Option<Self>> {
+        for model_name in model_names {
+            if Self::exists_with_chunk_size(dataset, variant, model_name, chunk_size) {
+                let path =
+                    Self::cache_path_with_chunk_size(dataset, variant, model_name, chunk_size);
+                return Ok(Some(Self { path }));
+            }
+        }
+        Ok(None)
+    }
+
     /// Load cached chunks for a set of session IDs.
     pub fn load_sessions(&self, session_ids: &[&str]) -> Result<Vec<CachedChunk>> {
         let conn = Connection::open(&self.path)?;

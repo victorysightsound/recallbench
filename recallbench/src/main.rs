@@ -28,7 +28,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
+use chrono::Local;
 use clap::{Parser, Subcommand};
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::time::FormatTime;
+
+struct LocalTimestamp;
+
+impl FormatTime for LocalTimestamp {
+    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
+        write!(w, "{}", Local::now().format("%Y-%m-%dT%H:%M:%S%.6f%:z"))
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "recallbench")]
@@ -327,6 +338,22 @@ enum Commands {
         verbose: bool,
     },
 
+    /// Prebuild persistent local corpora for the enhanced femind benchmark lane
+    PrebuildCorpora {
+        /// Dataset name
+        #[arg(long, default_value = "longmemeval")]
+        dataset: String,
+        /// Dataset variant
+        #[arg(long, default_value = "small")]
+        variant: String,
+        /// Quick mode: prebuild only a stratified subset
+        #[arg(long)]
+        quick: bool,
+        /// Number of questions in quick mode
+        #[arg(long, default_value = "10")]
+        quick_size: Option<usize>,
+    },
+
     /// Launch local web UI to browse results
     Serve {
         /// Port to listen on
@@ -345,6 +372,7 @@ async fn main() -> Result<()> {
     // Initialize tracing
     let filter = if cli.verbose { "debug" } else { "info" };
     tracing_subscriber::fmt()
+        .with_timer(LocalTimestamp)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(filter)),
@@ -497,6 +525,9 @@ async fn main() -> Result<()> {
                 extract_model.as_deref(), graph, embedding, dedup, recency,
                 max_per_session, chunk_size, quick, quick_size, verbose,
             ).await
+        }
+        Commands::PrebuildCorpora { dataset, variant, quick, quick_size } => {
+            cmd_prebuild_corpora(&dataset, &variant, quick, quick_size).await
         }
         Commands::CacheSessions { dataset: ds_name } => {
             cmd_cache_sessions(&ds_name).await
@@ -685,46 +716,47 @@ async fn cmd_run(
         match system_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
             #[cfg(feature = "femind-adapter")]
-            "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
+            "femind" | "femind-remote" => Box::new(
+                systems::femind_adapter::FemindAdapter::with_backend(
+                    build_femind_chunk_backend(system_name, &cfg)?,
+                )?,
+            ),
             #[cfg(feature = "femind-adapter")]
-            "femind-api" | "femind-fallback" => {
-                let key_output = std::process::Command::new("sh")
-                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
-                    .output()?;
-                let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
-                if api_key.is_empty() {
-                    anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
-                }
+            "femind-api" | "femind-fallback" | "femind-enhanced" => {
+                let api_key = fetch_deepinfra_api_key()?;
                 if system_name == "femind-api" {
-                    Box::new(systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?)
+                    Box::new(systems::femind_adapter::FemindAdapter::with_backend(
+                        build_femind_chunk_backend(system_name, &cfg)?,
+                    )?)
+                } else if system_name == "femind-enhanced" {
+                    Box::new(build_femind_enhanced(&api_key)?)
                 } else {
-                    Box::new(systems::femind_adapter::FemindAdapter::with_api_and_local_fallback(&api_key)?)
+                    Box::new(systems::femind_adapter::FemindAdapter::with_backend(
+                        build_femind_chunk_backend(system_name, &cfg)?,
+                    )?)
                 }
             },
             #[cfg(feature = "femind-adapter")]
             "femind-mab" => {
-                let key_output = std::process::Command::new("sh")
-                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
-                    .output()?;
-                let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
                 Box::new(
-                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+                    systems::femind_adapter::FemindAdapter::with_backend(
+                        build_femind_chunk_backend("femind-api", &cfg)?
+                    )?
                         .with_assembly_config(femind::context::AssemblyConfig::single_document())
                 )
             },
             #[cfg(feature = "femind-adapter")]
             "femind-extract" => {
-                let key_output = std::process::Command::new("sh")
-                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
-                    .output()?;
-                let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+                let api_key = fetch_deepinfra_api_key()?;
                 let llm = Box::new(femind::llm::ApiLlmCallback::new(
                     "https://api.deepinfra.com/v1/openai",
                     &api_key,
                     "",
                 ));
                 Box::new(
-                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+                    systems::femind_adapter::FemindAdapter::with_backend(
+                        build_femind_chunk_backend("femind-api", &cfg)?
+                    )?
                         .with_assembly_config(femind::context::AssemblyConfig::single_document())
                         .with_llm(llm)
                 )
@@ -739,38 +771,43 @@ async fn cmd_run(
     let gen_llm = create_llm_client(gen_model, &cfg)?;
     let judge_llm = create_llm_client(judge_model, &cfg)?;
 
+    #[cfg(feature = "femind-adapter")]
+    let femind_cache_backend = match system_name {
+        "femind" | "femind-api" | "femind-fallback" | "femind-remote" => {
+            Some(build_femind_chunk_backend(system_name, &cfg)?)
+        }
+        _ => None,
+    };
+
     // Build or load embedding cache if system supports it
     // Skip cache for extraction-based systems (they do their own ingest)
-        let embedding_cache = if system.supports_precomputed() && system_name != "femind-extract" {
-        let model_name = "sentence-transformers/all-MiniLM-L6-v2";
-        if embedding_cache::EmbeddingCache::exists(&dataset, &variant, model_name) {
-            tracing::info!("Using cached embeddings for {dataset}/{variant}");
-            Some(embedding_cache::EmbeddingCache::open(&dataset, &variant, model_name)?)
-        } else {
-            tracing::info!("Building embedding cache for {dataset}/{variant} (one-time)...");
-            // Get API key for DeepInfra embedding
-            let key_output = std::process::Command::new("sh")
-                .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
-                .output();
-            let api_key = key_output.ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .filter(|k| !k.is_empty());
-
-            if let Some(key) = api_key {
-                let backend = femind::embeddings::ApiBackend::deepinfra_minilm(&key);
-                let cache = embedding_cache::EmbeddingCache::build(
-                    &dataset, &variant, ds.questions(), &backend, 1000, 10,
-                )?;
+    let embedding_cache = if system.supports_precomputed()
+        && system_name != "femind-extract"
+        && system_name != "femind-enhanced"
+    {
+        #[cfg(feature = "femind-adapter")]
+        if let Some(backend) = femind_cache_backend.as_ref() {
+            let compatible_models = backend.compatibility_model_names();
+            if let Some(cache) = embedding_cache::EmbeddingCache::open_compatible(
+                &dataset,
+                &variant,
+                &compatible_models,
+            )? {
+                tracing::info!("Using cached embeddings for {dataset}/{variant}");
                 Some(cache)
             } else {
-                tracing::warn!("No DeepInfra API key found, building cache with local model...");
-                let backend = femind::embeddings::CandleNativeBackend::new()?;
-                let cache = embedding_cache::EmbeddingCache::build(
-                    &dataset, &variant, ds.questions(), &backend, 1000, 10,
-                )?;
-                Some(cache)
+                tracing::info!("Building embedding cache for {dataset}/{variant} (one-time)...");
+                Some(embedding_cache::EmbeddingCache::build(
+                    &dataset,
+                    &variant,
+                    ds.questions(),
+                    backend.as_ref(),
+                    1000,
+                    10,
+                )?)
             }
+        } else {
+            None
         }
     } else {
         None
@@ -821,6 +858,14 @@ async fn cmd_run(
 
 /// Create an LLM client from a model string, resolving named endpoints from config.
 fn create_llm_client(model: &str, cfg: &config::Config) -> Result<Arc<dyn traits::LLMClient>> {
+    if let Some(rest) = model.strip_prefix("codex:") {
+        let (model_name, effort) = match rest.rsplit_once('@') {
+            Some((name, eff)) if !name.is_empty() && !eff.is_empty() => (name, Some(eff)),
+            _ => (rest, None),
+        };
+        return Ok(Arc::new(llm::codex::CodexClient::with_effort(model_name, effort)));
+    }
+
     // Check for named endpoint in config (e.g., --gen-model deepinfra matches [llm.deepinfra])
     if let Some(ep) = cfg.llm.endpoints.get(model) {
         let client = llm::compatible::CompatibleClient::from_config(model, ep)?;
@@ -833,6 +878,171 @@ fn create_llm_client(model: &str, cfg: &config::Config) -> Result<Arc<dyn traits
             let (provider, _) = llm::LLMRegistry::resolve_provider(model);
             Ok(Arc::new(llm::cli::CliLLMClient::new(provider, model)))
         }
+    }
+}
+
+#[cfg(feature = "femind-adapter")]
+fn build_femind_enhanced(api_key: &str) -> Result<systems::femind_adapter::FemindAdapter> {
+    let mut engine_config = femind::engine::EngineConfig::default();
+    engine_config.assembly = femind::context::AssemblyConfig {
+        max_per_session: 1,
+        recency_boost: 0.3,
+        search_limit: 200,
+        graph_depth: 2,
+    };
+    let llm = Box::new(femind::llm::ApiLlmCallback::new(
+        "https://api.deepinfra.com/v1/openai",
+        api_key,
+        "openai/gpt-oss-120b",
+    ));
+    systems::femind_adapter::FemindAdapter::with_backend_config_named(
+        std::sync::Arc::new(femind::embeddings::ApiBackend::deepinfra_minilm(api_key)),
+        engine_config,
+        "femind-enhanced",
+    )
+    .map(|adapter| {
+        adapter
+            .with_assembly_config(femind::context::AssemblyConfig {
+                max_per_session: 1,
+                recency_boost: 0.3,
+                search_limit: 200,
+                graph_depth: 2,
+            })
+            .with_persistent_corpora()
+            .with_ingest_mode(systems::femind_adapter::IngestMode::Hybrid)
+            .with_llm_tagged(llm, "openai/gpt-oss-120b")
+    })
+}
+
+#[cfg(feature = "femind-adapter")]
+#[derive(Debug, Clone)]
+struct FemindRemoteEmbeddingConfig {
+    base_url: String,
+    auth_token: Option<String>,
+    timeout_secs: Option<u64>,
+    fallback_to_local: bool,
+}
+
+#[cfg(feature = "femind-adapter")]
+fn fetch_deepinfra_api_key() -> Result<String> {
+    let key_output = std::process::Command::new("sh")
+        .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+        .output()?;
+    let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+    if api_key.is_empty() {
+        anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
+    }
+    Ok(api_key)
+}
+
+#[cfg(feature = "femind-adapter")]
+fn resolve_secret_from_env_or_file(
+    env_name: Option<&str>,
+    env_file: Option<&std::path::Path>,
+) -> Result<Option<String>> {
+    if let Some(env_name) = env_name
+        && let Ok(value) = std::env::var(env_name)
+        && !value.trim().is_empty()
+    {
+        return Ok(Some(value));
+    }
+    if let (Some(env_name), Some(env_file)) = (env_name, env_file) {
+        let text = std::fs::read_to_string(env_file)?;
+        for raw_line in text.lines() {
+            let line = raw_line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let line = line.strip_prefix("export ").unwrap_or(line);
+            let Some((candidate_key, candidate_value)) = line.split_once('=') else {
+                continue;
+            };
+            if candidate_key.trim() == env_name {
+                let value = candidate_value.trim().trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    return Ok(Some(value.to_string()));
+                }
+            }
+        }
+        anyhow::bail!(
+            "env file '{}' does not define {}",
+            env_file.display(),
+            env_name
+        );
+    }
+    Ok(None)
+}
+
+#[cfg(feature = "femind-adapter")]
+fn resolve_femind_remote_embedding_config(
+    cfg: &config::Config,
+) -> Result<Option<FemindRemoteEmbeddingConfig>> {
+    let Some(remote) = cfg.embeddings.remote_service.as_ref() else {
+        return Ok(None);
+    };
+    if remote.enabled == Some(false) {
+        return Ok(None);
+    }
+    let Some(base_url) = remote.base_url.clone() else {
+        return Ok(None);
+    };
+    let auth_token = resolve_secret_from_env_or_file(
+        remote.auth_token_env.as_deref(),
+        remote.auth_token_env_file.as_deref(),
+    )?;
+    Ok(Some(FemindRemoteEmbeddingConfig {
+        base_url,
+        auth_token,
+        timeout_secs: remote.timeout_secs,
+        fallback_to_local: remote.fallback_to_local.unwrap_or(true),
+    }))
+}
+
+#[cfg(feature = "femind-adapter")]
+fn build_femind_chunk_backend(
+    system_name: &str,
+    cfg: &config::Config,
+) -> Result<std::sync::Arc<dyn femind::embeddings::EmbeddingBackend>> {
+    use std::time::Duration;
+
+    use femind::embeddings::{
+        ApiBackend, CandleNativeBackend, EmbeddingBackend, FallbackBackend, RemoteEmbeddingBackend,
+    };
+
+    match system_name {
+        "femind" => Ok(std::sync::Arc::new(CandleNativeBackend::new()?)),
+        "femind-api" => {
+            let api_key = fetch_deepinfra_api_key()?;
+            Ok(std::sync::Arc::new(ApiBackend::deepinfra_minilm(&api_key)))
+        }
+        "femind-fallback" => {
+            let api_key = fetch_deepinfra_api_key()?;
+            let api = Box::new(ApiBackend::deepinfra_minilm(&api_key)) as Box<dyn EmbeddingBackend>;
+            let local = Box::new(CandleNativeBackend::new()?) as Box<dyn EmbeddingBackend>;
+            Ok(std::sync::Arc::new(FallbackBackend::api_with_local_fallback(api, local)))
+        }
+        "femind-remote" => {
+            let remote = resolve_femind_remote_embedding_config(cfg)?
+                .ok_or_else(|| anyhow::anyhow!("missing [embeddings.remote_service] config for femind-remote"))?;
+            let timeout = remote.timeout_secs.map(Duration::from_secs);
+            if remote.fallback_to_local {
+                Ok(std::sync::Arc::new(
+                    RemoteEmbeddingBackend::minilm_with_local_fallback_and_timeout(
+                        remote.base_url,
+                        remote.auth_token,
+                        Box::new(CandleNativeBackend::new()?),
+                        timeout,
+                    )?,
+                ))
+            } else {
+                Ok(std::sync::Arc::new(RemoteEmbeddingBackend::minilm_with_timeout(
+                    remote.base_url,
+                    remote.auth_token,
+                    timeout,
+                )?))
+            }
+        }
+        other => anyhow::bail!("unsupported femind embedding backend for system '{other}'"),
     }
 }
 
@@ -1025,30 +1235,29 @@ async fn cmd_compare(
         let system: Box<dyn traits::MemorySystem> = match *sys_name {
             "echo" => Box::new(systems::echo::EchoSystem::new()),
             #[cfg(feature = "femind-adapter")]
-            "femind" => match systems::femind_adapter::FemindAdapter::new() {
+            "femind" | "femind-remote" => match systems::femind_adapter::FemindAdapter::with_backend(
+                match build_femind_chunk_backend(sys_name, &cfg) {
+                    Ok(backend) => backend,
+                    Err(e) => {
+                        tracing::error!("Failed to create Femind embedding backend: {e}");
+                        continue;
+                    }
+                }
+            ) {
                 Ok(a) => Box::new(a),
                 Err(e) => { tracing::error!("Failed to create Femind adapter: {e}"); continue; }
             },
             #[cfg(feature = "femind-adapter")]
             "femind-api" | "femind-fallback" => {
-                // Fetch DeepInfra API key from keychain
-                let key_result = std::process::Command::new("sh")
-                    .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
-                    .output();
-                let api_key = match key_result {
-                    Ok(output) if output.status.success() => {
-                        String::from_utf8_lossy(&output.stdout).trim().to_string()
+                let adapter = systems::femind_adapter::FemindAdapter::with_backend(
+                    match build_femind_chunk_backend(sys_name, &cfg) {
+                        Ok(backend) => backend,
+                        Err(e) => {
+                            tracing::error!("Failed to create Femind embedding backend: {e}");
+                            continue;
+                        }
                     }
-                    _ => {
-                        tracing::error!("Failed to fetch DeepInfra API key from keychain");
-                        continue;
-                    }
-                };
-                let adapter = if *sys_name == "femind-api" {
-                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)
-                } else {
-                    systems::femind_adapter::FemindAdapter::with_api_and_local_fallback(&api_key)
-                };
+                );
                 match adapter {
                     Ok(a) => Box::new(a),
                     Err(e) => { tracing::error!("Failed to create Femind API adapter: {e}"); continue; }
@@ -1160,22 +1369,26 @@ async fn cmd_retrieval_test(
     let system: Box<dyn traits::MemorySystem> = match system_name {
         "echo" => Box::new(systems::echo::EchoSystem::new()),
         #[cfg(feature = "femind-adapter")]
-        "femind" => Box::new(systems::femind_adapter::FemindAdapter::new()?),
+        "femind" | "femind-remote" => Box::new(
+            systems::femind_adapter::FemindAdapter::with_backend(
+                build_femind_chunk_backend(system_name, &cfg)?
+            )?
+        ),
         #[cfg(feature = "femind-adapter")]
         "femind-api" | "femind-fallback" | "femind-mab" => {
-            let key_output = std::process::Command::new("sh")
-                .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
-                .output()?;
-            let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
             if system_name == "femind-mab" {
                 Box::new(
-                    systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?
+                    systems::femind_adapter::FemindAdapter::with_backend(
+                        build_femind_chunk_backend("femind-api", &cfg)?
+                    )?
                         .with_assembly_config(femind::context::AssemblyConfig::single_document())
                 )
-            } else if system_name == "femind-api" {
-                Box::new(systems::femind_adapter::FemindAdapter::with_deepinfra_api(&api_key)?)
             } else {
-                Box::new(systems::femind_adapter::FemindAdapter::with_api_and_local_fallback(&api_key)?)
+                Box::new(
+                    systems::femind_adapter::FemindAdapter::with_backend(
+                        build_femind_chunk_backend(system_name, &cfg)?
+                    )?
+                )
             }
         },
         _ => anyhow::bail!("Unknown system: {system_name}"),
@@ -1183,11 +1396,16 @@ async fn cmd_retrieval_test(
 
     // Check for embedding cache matching the chunk size
     let cache_path = {
-        let model_name = "sentence-transformers/all-MiniLM-L6-v2";
-        if embedding_cache::EmbeddingCache::exists_with_chunk_size(dataset, variant, model_name, chunk_size) {
-            let path = embedding_cache::EmbeddingCache::cache_path_with_chunk_size(dataset, variant, model_name, chunk_size);
+        let backend = build_femind_chunk_backend(system_name, &cfg)?;
+        let compatible_models = backend.compatibility_model_names();
+        if let Some(cache) = embedding_cache::EmbeddingCache::open_compatible_with_chunk_size(
+            dataset,
+            variant,
+            &compatible_models,
+            chunk_size,
+        )? {
             tracing::info!("Using cached embeddings (chunk_size={chunk_size})");
-            Some(path)
+            Some(cache.path().to_path_buf())
         } else {
             tracing::warn!("No embedding cache found for chunk_size={chunk_size} — will use live embedding");
             None
@@ -1328,6 +1546,76 @@ async fn cmd_cache_sessions(dataset_filter: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(feature = "femind-adapter")]
+async fn cmd_prebuild_corpora(
+    dataset: &str,
+    variant: &str,
+    quick: bool,
+    quick_size: Option<usize>,
+) -> Result<()> {
+    let key_output = std::process::Command::new("sh")
+        .args(["-c", "security find-generic-password -w -s 'DeepInfra API Key' -a 'deepinfra'"])
+        .output()?;
+    let api_key = String::from_utf8_lossy(&key_output.stdout).trim().to_string();
+    if api_key.is_empty() {
+        anyhow::bail!("Failed to fetch DeepInfra API key from keychain");
+    }
+
+    let system: Box<dyn traits::MemorySystem> = Box::new(build_femind_enhanced(&api_key)?);
+
+    let registry = datasets::DatasetRegistry::new();
+    let ds = registry.load(dataset, variant, false).await?;
+    let questions: Vec<&types::BenchmarkQuestion> = if quick {
+        sampling::stratified_sample(ds.questions(), quick_size.unwrap_or(10), 42)
+    } else {
+        ds.questions().iter().collect()
+    };
+
+    println!(
+        "Prebuilding femind-enhanced corpora — {} {} ({} questions)",
+        dataset,
+        variant,
+        questions.len()
+    );
+    println!("══════════════════════════════════════════════════════");
+
+    let pb = indicatif::ProgressBar::new(questions.len() as u64);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{msg}\n{wide_bar:.cyan/dim} {pos}/{len} ({eta})")
+            .unwrap(),
+    );
+    pb.set_message("Preparing persistent corpora...");
+
+    for question in &questions {
+        system.prepare_question(dataset, variant, question).await?;
+        system.reset().await?;
+        pb.inc(1);
+    }
+    pb.finish_with_message("Persistent corpora ready");
+
+    println!(
+        "Stored corpora under {}",
+        dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("recallbench")
+            .join("femind-corpora")
+            .display()
+    );
+
+    Ok(())
+}
+
+#[cfg(not(feature = "femind-adapter"))]
+async fn cmd_prebuild_corpora(
+    _dataset: &str,
+    _variant: &str,
+    _quick: bool,
+    _quick_size: Option<usize>,
+) -> Result<()> {
+    anyhow::bail!("femind adapter support is not enabled in this build")
 }
 
 async fn cmd_extraction_test(
